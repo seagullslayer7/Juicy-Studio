@@ -46,3 +46,10 @@ the licenses of its dependencies.
 
 The source distribution includes JuicyCensor's build specification and installer
 script. Keep the licenses and notices with redistributed application files.
+
+Optional enhancement download: Real-ESRGAN ncnn Vulkan (20220424 Windows build),
+including publisher-supplied models and its README retained in the installed
+directory. Engine source and MIT license:
+https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan . Model project and BSD-3-Clause
+license: https://github.com/xinntao/Real-ESRGAN . This optional archive is not
+bundled in JuicyCensor's installer.

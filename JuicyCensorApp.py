@@ -614,6 +614,8 @@ class MainWindow(QMainWindow):
         self.workspace_tabs.setDrawBase(False)
         self.workspace_tabs.addTab('Censor')
         self.workspace_tabs.addTab('Subtitles && Translation')
+        self.workspace_tabs.addTab('Enhance')
+        self.workspace_tabs.setTabToolTip(2, 'AI video upscaling · Ctrl+3')
         self.workspace_tabs.setTabToolTip(0, 'Review and censor dialogue · Ctrl+1')
         self.workspace_tabs.setTabToolTip(1, 'Create, edit, and translate subtitles · Ctrl+2')
         command_row.addWidget(self.workspace_tabs)
@@ -904,6 +906,10 @@ class MainWindow(QMainWindow):
         self.subtitles = SubtitleWorkspace(self, ROOT, CitrusComboBox, TimestampEdit, Timeline, PaneSplitter)
         self.subtitles.job_requested.connect(self.start_job)
         self.workspaces.addWidget(self.subtitles)
+        from enhance_ui import EnhanceWorkspace
+        self.enhance = EnhanceWorkspace(self, ROOT, CitrusComboBox, TimestampEdit)
+        self.enhance.job_requested.connect(self.start_job)
+        self.workspaces.addWidget(self.enhance)
         self.workspace_tabs.currentChanged.connect(self.switch_workspace)
         statusbar = QHBoxLayout()
         statusbar.setSpacing(16)
@@ -974,6 +980,7 @@ class MainWindow(QMainWindow):
         view_menu = self.command_menu.addMenu('&View')
         add(view_menu, 'Censor workspace', lambda: self.workspace_tabs.setCurrentIndex(0), 'Ctrl+1')
         add(view_menu, 'Subtitles && Translation workspace', lambda: self.workspace_tabs.setCurrentIndex(1), 'Ctrl+2')
+        add(view_menu, 'Enhance workspace', lambda: self.workspace_tabs.setCurrentIndex(2), 'Ctrl+3')
         view_menu.addSeparator()
         queue_action = self.queue_dock.toggleViewAction()
         queue_action.setShortcut(QKeySequence('Ctrl+L'))
@@ -1054,9 +1061,10 @@ class MainWindow(QMainWindow):
 
     def switch_workspace(self, index):
         self.player.pause()
+        self.enhance.pause()
         self.subtitles.player.pause()
         self.subtitles.commit_edit()
-        if index == 0:
+        if index != 1:
             self.subtitles.deactivate_preview()
         self.workspaces.setCurrentIndex(index)
         if index == 1:
@@ -1262,13 +1270,17 @@ class MainWindow(QMainWindow):
         if finished or self.job.get('action') == 'probe':
             self.remaining_label.clear()
             return
-        remaining = self.time_estimate.remaining() if self.time_estimate else None
+        if self.job.get('action') in ('enhance_preview', 'enhance_export'):
+            percent = self.progress.value()
+            remaining = elapsed * (100-percent) / percent if percent > 0 else None
+        else:
+            remaining = self.time_estimate.remaining() if self.time_estimate else None
         if remaining is not None:
             # Round estimates to five seconds; elapsed time remains second-accurate.
             remaining = max(5, int((remaining + 4.999) // 5) * 5)
             self.remaining_label.setText(f'About {format_duration(remaining)} remaining')
         else:
-            self.remaining_label.setText('Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Preparing estimate…' if self.job.get('action','').startswith('subtitle_') else 'Estimating download time…')
+            self.remaining_label.setText('Measuring enhancement speed…' if self.job.get('action') in ('enhance_preview','enhance_export') else 'Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Preparing estimate…' if self.job.get('action','').startswith('subtitle_') else 'Estimating download time…')
 
     def selected_path(self):
         row = self.queue.currentRow()
@@ -1289,6 +1301,7 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(busy)
         self.cancel_btn.setVisible(busy)
         self.subtitles.set_busy(busy)
+        self.enhance.set_busy(busy)
         self.scissors.setEnabled(not busy and self.state is not None and self.mark_start is None)
         self.mark_panel.setEnabled(not busy)
         self.sync_menu_actions()
@@ -1363,6 +1376,7 @@ class MainWindow(QMainWindow):
         self.duration_changed(0); self.timeline.position = 0
         self.filename.setText('Open a video from File, or drop it here'); self.filename.setToolTip('')
         self.subtitles.clear_video()
+        self.enhance.clear_video()
         self.refresh_regions()
 
     def dragEnterEvent(self, event):
@@ -1389,6 +1403,7 @@ class MainWindow(QMainWindow):
         self.filename.setText(Path(path).name)
         self.filename.setToolTip(path)
         self.subtitles.load_video(path)
+        self.enhance.load_video(path)
         for timeline in (self.timeline, self.subtitles.timeline):
             timeline.peaks = []; timeline.drag = None; timeline.selected_index = -1; timeline.position = 0
         self.waveform.load(path)
@@ -1581,8 +1596,10 @@ class MainWindow(QMainWindow):
         self.set_time_estimate(duration)
         self.subtitles.player.pause()
         self.refresh_elapsed()
+        self.player.pause()
+        self.enhance.pause()
         self.progress.setFormat("%p% · estimated" if job["action"] == "analyze" else "%p%")
-        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading", "subtitle_transcribe": "Transcribing", "subtitle_translate": "Translating", "subtitle_smart": "Refining", "subtitle_waveform": "Reading audio", "subtitle_export": "Exporting"}[job["action"]])
+        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading", "subtitle_transcribe": "Transcribing", "subtitle_translate": "Translating", "subtitle_smart": "Refining", "subtitle_waveform": "Reading audio", "subtitle_export": "Exporting", "enhance_install": "Downloading", "enhance_preview": "Enhancing", "enhance_export": "Enhancing"}[job["action"]])
         self.set_status('Checking graphics…' if job['action'] == 'probe' else 'Starting…')
         self.update_controls()
         process.start()
@@ -1603,7 +1620,11 @@ class MainWindow(QMainWindow):
                     self.worker_error = f'Unexpected processing response: {exc}'
     def message(self, data):
         kind = data['type']
-        if kind.startswith('subtitle_'):
+        if kind.startswith('enhance_'):
+            if not self.cancelled:
+                self.enhance.receive(data)
+                self.received_result = True
+        elif kind.startswith('subtitle_'):
             if not self.cancelled:
                 self.subtitles.receive(data)
                 self.received_result = True
@@ -1662,6 +1683,18 @@ class MainWindow(QMainWindow):
         self.process.deleteLater()
         self.process = None
         self.job_path.unlink(missing_ok=True)
+        if self.job.get('action') in ('enhance_preview','enhance_export'):
+            from enhance_worker import safe_remove
+            token = self.job.get('partial_token', '')
+            if re.fullmatch('[0-9a-f]{32}', token):
+                target = Path(self.job['output']).resolve()
+                partial = target.with_name(target.stem+'.'+token+'.partial'+target.suffix)
+                folder = ROOT/'cache'/'enhance-jobs'/token
+                try:
+                    partial.unlink(missing_ok=True)
+                    if folder.exists(): safe_remove(folder,folder.parent)
+                except OSError:
+                    pass
         if self.job.get('action') == 'subtitle_export' and re.fullmatch(r'[0-9a-f]{32}', self.job.get('partial_token', '')):
             target = Path(self.job['output']).resolve()
             partial = target.with_name(target.stem + '.' + self.job['partial_token'] + '.partial' + target.suffix)
@@ -1716,6 +1749,7 @@ class MainWindow(QMainWindow):
         self.subtitles.autosave()
         self.subtitles.deactivate_preview()
         self.subtitles.player.setVideoOutput(None)
+        self.enhance.shutdown()
         self.player.stop()
         self.player.setSource(QUrl())
         self.player.setVideoOutput(None)

@@ -70,6 +70,9 @@ def validate_events(raw: list, duration: float):
 
 
 def run_job(job: dict):
+    if job['action'].startswith('enhance_'):
+        from enhance_worker import run_enhance_job
+        return run_enhance_job(job, emit)
     if job['action'].startswith('subtitle_'):
         from subtitle_worker import run_subtitle_job
         return run_subtitle_job(job, emit)

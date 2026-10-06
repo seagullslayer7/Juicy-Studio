@@ -7,7 +7,7 @@ from PyInstaller.utils.win32.versioninfo import (
 
 root = Path(SPECPATH)
 version = json.loads((root / 'release-manifest.json').read_text(encoding='utf-8'))['version']
-version_tuple = tuple(int(part) for part in version.split('.')) + (0,)
+version_tuple = tuple(int(part) for part in version.split('-')[0].split('.')) + (0,)
 version_info = VSVersionInfo(
     ffi=FixedFileInfo(filevers=version_tuple, prodvers=version_tuple,
                      mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0, 0)),

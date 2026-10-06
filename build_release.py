@@ -10,12 +10,12 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 VERSION = json.loads((ROOT/'release-manifest.json').read_text(encoding='utf-8'))['version']
-PAYLOAD_FILES = ['JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcription.py',
+PAYLOAD_FILES = ['JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcription.py', 'enhance_ui.py', 'enhance_worker.py',
     'processing_time.py', 'appearance.py', 'audio_timeline.py', 'audio_waveform.py', 'ui_icons.py', 'languages.py', 'subtitle_document.py', 'subtitle_worker.py', 'subtitle_ui.py', 'translation.py', 'runtime_paths.py', 'bootstrap.py', 'setup_wizard.py', 'setup_verify.py',
     'install_runtime.py', 'model_download.py', 'config.json', 'banned_words.txt',
     'banned_phrases.txt', 'beep.mp3', 'release-manifest.json', 'requirements-cpu.lock',
     'requirements-cuda.lock', 'LICENSE', 'README.md', 'THIRD-PARTY.md', 'VALIDATION.md',
-    'BUILDING.md', 'RELEASE-NOTES.md']
+    'BUILDING.md', 'RELEASE-NOTES.md', 'ENHANCE-DEVELOPMENT.md']
 PAYLOAD_DIRS = ['assets', 'licenses', 'vendor_wheels', 'bootstrap-tools']
 SOURCE_EXTRA = ['JuicyCensor.spec', 'build_release.py', 'requirements-ui.txt',
     'requirements-dev.txt', 'requirements-runtime.in', 'requirements-cpu.in',
