@@ -14,7 +14,9 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
    start and 2–10 second length. The header shows source → output dimensions.
 4. Generate a preview. Play, pause, resume, or seek the Original/Enhanced panels
    together. The compact seek bar shows current time and duration; the result
-   heading shows the source time range. Only the original panel plays audio.
+   heading shows the source time range. Once a result is ready, only its audio
+   plays, so downmixing and audio encoding can be checked. Before generation,
+   playback uses the original audio. The sound button mutes either source.
 5. Choose the video codec, encoder, and file format, then export a new file.
    Audio defaults to copying every original track without re-encoding. Choose
    MKV for incompatible source audio, or AAC to make an MP4-compatible copy.
@@ -32,6 +34,15 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 | File format | MP4 or MKV |
 | Audio | Original, AAC, Opus, FLAC |
 | Audio bitrate | 128, 192, 256, or 320 kbps per AAC/Opus track |
+| Audio channels | Original channels, or Stereo (2 channels) |
+
+The **Audio** tab keeps these choices together. Stereo downmixes every audio
+track for devices/players that cannot handle multichannel audio. Selecting it
+with Original audio switches to AAC at 320 kbps because stream copying cannot
+change channel layout. Existing AAC, Opus, and FLAC selections are kept. Selecting
+Original audio again restores Original channels. Stereo AAC in MP4 is the broad
+compatibility option; it is re-encoded, not a lossless copy. Original remains the
+default and preserves all tracks without re-encoding.
 
 ## Output resolution
 
@@ -68,7 +79,7 @@ but does not change AI model speed. Output remains 8-bit SDR.
 Original audio preserves compressed packet data. AAC and Opus are lossy;
 FLAC preserves decoded audio without further loss but cannot restore missing
 detail. Opus/FLAC use MKV. MP4 HEVC uses the `hvc1` tag. Comparison playback uses
-the original audio only. Shared Export settings also offer automatic codec
+the generated audio when available. Shared Export settings also offer automatic codec
 selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 ## Implemented
@@ -110,7 +121,7 @@ future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-80 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+81 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -138,6 +149,12 @@ rewinding on repeated LoadedMedia events, offset seeking, restart after the end,
 automatic full-export comparison, named CUDA/Vulkan devices, and 1280–1920 pixel
 layouts. CUDA animation is native 4× with final resizing; the Vulkan animation
 path retains its scale-specific models.
+
+Audio validation exports a test file containing two four-channel tracks. Original
+retains both four-channel streams with identical audio packet hashes; Stereo AAC
+produces two two-channel streams. Tone checks verify audio from all four source
+channels survives the downmix. UI checks cover channel/encoder compatibility and
+using the generated mix for comparison playback.
 
 Resolution checks cover landscape, portrait, 4:3, square, ultrawide, even-pixel
 rounding, downscaling, model selection, and size limits. Real animation exports

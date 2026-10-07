@@ -60,6 +60,18 @@ class EncodingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'MKV'): e.audio_options(settings, '.mp4', source)
             self.assertIn(audio, e.audio_options(settings, '.mkv', source))
 
+    def test_stereo_requires_encoding_and_preserves_original_default(self):
+        with self.assertRaisesRegex(ValueError,'requires audio encoding'):
+            e.export_settings({'audio':'copy','audio_channels':'stereo'})
+        with self.assertRaisesRegex(ValueError,'channels'):
+            e.export_settings({'audio_channels':'surprise'})
+        for codec in ('aac','libopus','flac'):
+            settings=e.export_settings({'audio':codec,'audio_channels':'stereo'})
+            args=e.audio_options(settings,'.mkv',[{'codec_name':'aac','channels':4}])
+            self.assertEqual(args[-2:],['-ac:a','2'])
+        original=e.audio_options(e.export_settings({}),'.mkv',[{'codec_name':'aac','channels':4}])
+        self.assertEqual(original,['-c:a','copy'])
+
     def test_probe_uses_actual_frame_rate_and_bitrate(self):
         with patch.object(v.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
             v.select_export_encoder('hevc_nvenc', '18', 'fast', bitrate='4000000', fps='60000/1001',

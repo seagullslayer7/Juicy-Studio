@@ -146,12 +146,15 @@ def export_settings(settings):
     encoder_options(CODECS[codec][1][-1], str(settings.get('quality', '18')), preset, bitrate)
     audio = settings.get('audio', 'copy')
     if audio not in ('copy', 'aac', 'libopus', 'flac'): raise ValueError('Unsupported audio encoder.')
+    channels = settings.get('audio_channels','original')
+    if channels not in ('original','stereo'): raise ValueError('Choose Original channels or Stereo (2 channels).')
+    if channels == 'stereo' and audio == 'copy': raise ValueError('Stereo downmix requires audio encoding. Choose AAC, Opus, or FLAC.')
     audio_bitrate = str(settings.get('audio_bitrate', '192'))
     if audio_bitrate not in ('128', '192', '256', '320'): raise ValueError('Unsupported audio bitrate.')
     container = settings.get('container', 'mkv')
     if container not in ('mp4', 'mkv'): raise ValueError('Choose MP4 or MKV.')
     return dict(codec=codec, encoder=encoder, preset=preset, bitrate=bitrate, audio=audio,
-                audio_bitrate=audio_bitrate, container=container)
+                audio_bitrate=audio_bitrate, audio_channels=channels, container=container)
 
 
 def audio_options(settings, suffix, streams):
@@ -163,6 +166,7 @@ def audio_options(settings, suffix, streams):
             raise ValueError('Choose MKV to preserve this video’s audio format, or select AAC for MP4.')
     options = ['-c:a', audio]
     if audio in ('aac', 'libopus'): options += ['-b:a', settings['audio_bitrate']+'k']
+    if settings['audio_channels'] == 'stereo': options += ['-ac:a','2']
     return options
 
 
@@ -343,7 +347,7 @@ def enhance(job, emit):
         partial.rename(output)
         emit('enhance_preview' if preview else 'enhance_exported', output=str(output), start=start,
              length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
-             encoder=encoder, audio=encoding['audio'], backend=backend)
+             encoder=encoder, audio=encoding['audio'], audio_channels=encoding['audio_channels'], backend=backend)
     finally:
         for process in (decoder,writer):
             if process is not None:

@@ -85,6 +85,9 @@ class EnhanceWorkspace(QWidget):
         self.audio_bitrate = Combo()
         for value in (128,192,256,320): self.audio_bitrate.addItem(f'{value} kbps',str(value))
         self.audio_bitrate.setCurrentIndex(1); self.audio_bitrate.setToolTip('Bitrate per audio track for AAC or Opus. Original and FLAC do not use a lossy bitrate setting.')
+        self.audio_channels = Combo()
+        self.audio_channels.addItem('Original channels','original'); self.audio_channels.addItem('Stereo · 2 channels','stereo')
+        self.audio_channels.setToolTip('Stereo downmixes every audio track to two channels for playback compatibility. This requires re-encoding: choosing Stereo with Original audio selects AAC at 320 kbps. Choosing Original audio again restores Original channels. Existing AAC/Opus/FLAC choices are kept.')
         self.resolution = Combo()
         for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
         self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
@@ -92,7 +95,8 @@ class EnhanceWorkspace(QWidget):
                                  ('Restoration',self.restoration),('Output resolution',self.resolution)]),
                   ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
                                ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),
-                               ('Encoding speed',self.preset),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate)])]
+                               ('Encoding speed',self.preset)]),
+                  ('Audio',[('Audio encoder',self.audio_encoder),('Channels',self.audio_channels),('Audio bitrate',self.audio_bitrate)])]
         for title,fields in groups:
             page=QWidget(); settings_row=QGridLayout(page); settings_row.setContentsMargins(8,8,8,8)
             settings_row.setHorizontalSpacing(20); settings_row.setVerticalSpacing(8)
@@ -106,7 +110,10 @@ class EnhanceWorkspace(QWidget):
         previews = QHBoxLayout(); previews.setSpacing(12)
         self.original = QMediaPlayer(self); self.enhanced = QMediaPlayer(self)
         self.audio = QAudioOutput(self); self.audio.setVolume(.6); self.original.setAudioOutput(self.audio)
-        # Only the original plays audio; both panels follow one playback position.
+        self.result_audio = QAudioOutput(self); self.result_audio.setVolume(.6); self.enhanced.setAudioOutput(self.result_audio)
+        self.sound_muted = False
+        # Hear the generated mix when available, with only one panel audible.
+        self.update_audio_source()
         for title,player in [('Original',self.original),('Enhanced · generate a preview',self.enhanced)]:
             panel = QFrame(); panel.setObjectName('card'); box = QVBoxLayout(panel); box.setContentsMargins(14,12,14,14)
             label = QLabel(title); box.addWidget(label)
@@ -128,7 +135,7 @@ class EnhanceWorkspace(QWidget):
         self.seek.sliderMoved.connect(self.seek_to)
         self.seek.actionTriggered.connect(lambda _: QTimer.singleShot(0,lambda:self.seek_to(self.seek.value())))
         controls.addWidget(self.seek,1)
-        self.mute = action('Sound on',self.toggle_mute,'Toggle original audio; enhanced preview never plays duplicate audio')
+        self.mute = action('Sound on',self.toggle_mute,'Toggle sound. Uses the generated file’s audio when available, otherwise the original; never plays both at once.')
         controls.addWidget(self.mute); layout.addLayout(controls)
         footer = QHBoxLayout(); footer.setSpacing(12)
         footer.addWidget(QLabel('Preview starts at'))
@@ -156,7 +163,7 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(False)
 
     def settings(self):
-        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','resolution')}
+        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
         return values
 
@@ -171,6 +178,11 @@ class EnhanceWorkspace(QWidget):
 
     def settings_changed(self,control=None):
         if control is self.backend: self.populate_gpus(reset=True)
+        if control is self.audio_channels and self.audio_channels.currentData() == 'stereo' and self.audio_encoder.currentData() == 'copy':
+            self.audio_encoder.setCurrentIndex(self.audio_encoder.findData('aac'))
+            self.audio_bitrate.setCurrentIndex(self.audio_bitrate.findData('320'))
+        elif control is self.audio_encoder and self.audio_encoder.currentData() == 'copy':
+            self.audio_channels.setCurrentIndex(self.audio_channels.findData('original'))
         if control is self.codec: self.populate_encoders()
         if control is self.audio_encoder and self.audio_encoder.currentData() in ('libopus','flac'):
             self.container.setCurrentIndex(self.container.findData('mkv'))
@@ -258,6 +270,7 @@ class EnhanceWorkspace(QWidget):
     def invalidate_preview(self,*args):
         self.preview_pending = False
         self.pause(); self.preview_path = None; self.enhanced.setSource(QUrl())
+        self.update_audio_source()
         self.result_label.setText('Enhanced · generate a preview')
         self.seek.setRange(0,self.original.duration())
         self.update_time()
@@ -301,6 +314,7 @@ class EnhanceWorkspace(QWidget):
             self.host.set_status('Enhancement engine and models installed. Generate a short preview to begin.')
         elif data['type'] in ('enhance_preview','enhance_exported'):
             self.pause(); self.preview_path = data['output']; self.preview_start = data['start']; self.preview_length = data['length']
+            self.update_audio_source()
             self.preview_pending = True
             self.enhanced.setSource(QUrl.fromLocalFile(self.preview_path))
             self.seek.setRange(0,round(self.preview_length*1000)); self.seek.setValue(0)
@@ -312,6 +326,7 @@ class EnhanceWorkspace(QWidget):
         if data['type'] == 'enhance_exported':
             self.host.last_output = data['output']; self.host.open_result_btn.setEnabled(True)
             audio = 'Original audio copied without re-encoding.' if data.get('audio','copy') == 'copy' else 'Audio encoded as '+data['audio'].replace('libopus','Opus').upper()+'.'
+            if data.get('audio_channels') == 'stereo': audio += ' Stereo · 2 channels.'
             self.host.set_status('Export ready in the comparison player. '+audio)
 
     def ready_preview(self,status):
@@ -357,7 +372,12 @@ class EnhanceWorkspace(QWidget):
         if abs(self.enhanced.position()-position) > 100: self.enhanced.setPosition(max(0,position))
 
     def toggle_mute(self):
-        self.audio.setMuted(not self.audio.isMuted()); self.mute.setText('Sound off' if self.audio.isMuted() else 'Sound on')
+        self.sound_muted = not self.sound_muted
+        self.update_audio_source(); self.mute.setText('Sound off' if self.sound_muted else 'Sound on')
+
+    def update_audio_source(self):
+        self.audio.setMuted(self.sound_muted or bool(self.preview_path))
+        self.result_audio.setMuted(self.sound_muted or not self.preview_path)
 
     def pause(self):
         self.original.pause(); self.enhanced.pause()
