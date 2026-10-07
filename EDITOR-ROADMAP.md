@@ -10,7 +10,8 @@ retaining the orange identity. Existing projects and the published JuicyCensor
 The 3.1 prototype establishes local AI upscaling and preview comparison. Before
 calling it a stable release, validate the desktop launch/build, longer clips,
 motion consistency, GPU detection, and cleanup; persist preferences; improve
-target-resolution choices and preview controls. Keep unsupported HDR workflows
+preview controls and long-video performance. Target-resolution choices are now
+implemented. Keep unsupported HDR workflows
 explicit instead of silently degrading their color or dynamic range.
 
 ## Next: shared projects and basic editing

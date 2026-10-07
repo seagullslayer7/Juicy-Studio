@@ -18,6 +18,7 @@ import urllib.request
 from uuid import uuid4
 import zipfile
 from video_encoding import CODECS, encoder_options, select_export_encoder
+from enhance_resolution import TARGETS, output_size, model_scale
 
 ROOT = Path(__file__).resolve().parent
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -35,6 +36,8 @@ def runtime_ready():
     return all((root / name).is_file() for name in (
         'realesrgan-ncnn-vulkan.exe', 'models/realesr-animevideov3-x2.bin',
         'models/realesr-animevideov3-x2.param', 'models/realesrgan-x4plus.bin',
+        'models/realesr-animevideov3-x3.bin', 'models/realesr-animevideov3-x3.param',
+        'models/realesr-animevideov3-x4.bin', 'models/realesr-animevideov3-x4.param',
         'models/realesrgan-x4plus.param'))
 
 
@@ -106,7 +109,7 @@ def probe(video):
     if not math.isfinite(duration) or duration <= 0: raise ValueError('The video duration is unavailable.')
     width, height = int(stream['width']), int(stream['height'])
     if width <= 0 or height <= 0 or width * 2 > 7680 or height * 2 > 7680:
-        raise ValueError('The 2× output would exceed the prototype’s size limit.')
+        raise ValueError('Source dimensions exceed the enhancement limit of 3840 pixels per side.')
     if stream.get('sample_aspect_ratio', '1:1') not in ('1:1', '0:1', 'N/A'):
         raise ValueError('Convert this video to square pixels before enhancement.')
     return dict(width=width, height=height, fps=str(fps), duration=duration,
@@ -114,6 +117,7 @@ def probe(video):
 
 
 def validate_settings(settings):
+    if settings.get('resolution', '2x') not in TARGETS: raise ValueError('Choose a supported output resolution.')
     model = settings.get('model', 'animation')
     if model not in MODELS: raise ValueError('Choose Animation or Live action.')
     gpu = str(settings.get('gpu', 'auto'))
@@ -186,6 +190,9 @@ def enhance(job, emit):
     if not math.isfinite(start + length) or start < 0 or length <= 0 or (preview and length > 10):
         raise ValueError('Choose a preview of up to 10 seconds within the video.')
     audio_args = audio_options(encoding, output.suffix.lower(), info['audio'])
+    dimensions = output_size(info['width'], info['height'], job.get('settings', {}).get('resolution', '2x'))
+    out_width, out_height = dimensions
+    scale = model_scale(model, info['width'], info['height'], dimensions)
     token = job.get('partial_token', '')
     if not re.fullmatch('[0-9a-f]{32}', token): raise ValueError('Invalid enhancement job identifier.')
     parent = ROOT / 'cache' / 'enhance-jobs'
@@ -197,10 +204,10 @@ def enhance(job, emit):
     width, height, fps = info['width'], info['height'], info['fps']
     decoder = writer = None
     try:
-        emit('stage', message='Preparing 2× enhancement', percent=0)
+        emit('stage', message=f'Preparing enhancement · {out_width} × {out_height} · {scale}× AI model', percent=0)
         requested = ('auto' if encoding['codec'] == 'h264' else 'auto_'+encoding['codec']) if encoder == 'auto' else encoder
         encoder = select_export_encoder(requested, quality, encoding['preset'],
-            transforms=['-vf', f'scale={width*2}:{height*2}'], bitrate=encoding['bitrate'], fps=fps)
+            transforms=['-vf', f'scale={out_width}:{out_height}'], bitrate=encoding['bitrate'], fps=fps)
         with ExitStack() as stack:
             decode_log = stack.enter_context((scratch/'decode.log').open('w+'))
             encode_log = stack.enter_context((scratch/'encode.log').open('w+'))
@@ -208,7 +215,7 @@ def enhance(job, emit):
                 '-t',str(length),'-map','0:v:0','-vf',f'fps={fps}','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],
                 stdout=subprocess.PIPE, stderr=decode_log, creationflags=FLAGS)
             command = ['ffmpeg','-v','error','-nostdin','-n','-f','rawvideo','-pix_fmt','rgb24',
-                '-s',f'{width*2}x{height*2}','-r',fps,'-i','pipe:0','-ss',str(start),'-i',str(video),
+                '-s',f'{out_width}x{out_height}','-r',fps,'-i','pipe:0','-ss',str(start),'-i',str(video),
                 '-map','0:v:0','-map','1:a?','-map_metadata','1','-t',str(length),
                 *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),*audio_args,'-avoid_negative_ts','disabled']
             if output.suffix.lower() == '.mp4':
@@ -229,7 +236,7 @@ def enhance(job, emit):
                     Image.frombytes('RGB',(width,height),raw).save(inputs/name)
                     batch.append(name)
                 if not batch: break
-                engine, scale = MODELS[model]
+                engine = MODELS[model][0]
                 args = [str(runtime_folder()/'realesrgan-ncnn-vulkan.exe'),'-i',str(inputs),'-o',str(results),
                     '-m',str(runtime_folder()/'models'),'-n',engine,'-s',str(scale),'-t','128','-j','1:1:1','-f','png']
                 if gpu != 'auto': args += ['-g',gpu]
@@ -239,12 +246,12 @@ def enhance(job, emit):
                     with Image.open(results/name) as image:
                         if image.size != (width*scale,height*scale): raise RuntimeError('Unexpected AI output dimensions.')
                         image = image.convert('RGB')
-                        if scale != 2: image = image.resize((width*2,height*2),Image.Resampling.LANCZOS)
+                        if image.size != dimensions: image = image.resize(dimensions,Image.Resampling.LANCZOS)
                         writer.stdin.write(image.tobytes())
                     (inputs/name).unlink(); (results/name).unlink()
                     count += 1
                 percent = min(98.,count/(length*float(Fraction(fps)))*98)
-                emit('stage', message=f'Enhancing · {count} frames · {width*2} × {height*2} · {encoder}', percent=percent)
+                emit('stage', message=f'Enhancing · {count} frames · {out_width} × {out_height} · {encoder}', percent=percent)
             decoder.stdout.close()
             if decoder.wait() or not count: raise RuntimeError('Video decoding failed or produced no frames.')
             writer.stdin.close()
@@ -253,7 +260,7 @@ def enhance(job, emit):
                 raise RuntimeError('Enhanced video encoding failed: '+encode_log.read()[-600:])
         partial.rename(output)
         emit('enhance_preview' if preview else 'enhance_exported', output=str(output), start=start,
-             length=min(length,count/float(Fraction(fps))), width=width*2,height=height*2,frames=count,
+             length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
              encoder=encoder, audio=encoding['audio'])
     finally:
         for process in (decoder,writer):

@@ -8,7 +8,8 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 2. Install the optional enhancement engine and models (43 MiB download). The
    fixed official archive is SHA-256 checked before extraction; subsequent uses
    reuse the installed files. No separate CUDA toolkit is required.
-3. Choose Animation or Live action, then a preview start and 2–10 second length.
+3. Choose Animation or Live action and an **Output resolution**, then a preview
+   start and 2–10 second length. The header shows source → output dimensions.
 4. Generate a preview. Play and seek the Original/Enhanced panels together.
    Only the original panel plays audio.
 5. Choose the video codec, encoder, and file format, then export a new file.
@@ -26,6 +27,21 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 | File format | MP4 or MKV |
 | Audio | Original, AAC, Opus, FLAC |
 | Audio bitrate | 128, 192, 256, or 320 kbps per AAC/Opus track |
+
+## Output resolution
+
+Choose **720p**, **1080p**, **1440p/QHD**, **4K/UHD**, or **2×/4× source size**.
+The default remains 2×. Presets fit the image within 1280×720, 1920×1080,
+2560×1440, or 3840×2160, swapping the bounds for portrait footage. No cropping,
+stretching, or letterboxing is added; dimensions round to even pixels for video
+encoding. For example, 4:3 footage at 1080p becomes 1440×1080, while a portrait
+9:16 video becomes 1080×1920. A smaller target downscales, as stated in the UI.
+
+Animation automatically chooses the smallest sufficient 2×, 3×, or 4× AI model.
+Live action uses its 4× model. Lanczos resizing fits the result to the requested
+dimensions. Targets beyond 4× source size include conventional enlargement after
+AI, which the UI explains; they do not recover unlimited detail. Preview and full
+export use the same sizing logic, and changing resolution invalidates a preview.
 
 Automatic tests hardware encoders and then CPU for the chosen codec; it never
 silently changes HEVC/AV1 to H.264. Manual selections fail with an explanation
@@ -48,8 +64,8 @@ selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 - Real-ESRGAN ncnn Vulkan on NVIDIA/AMD graphics, with automatic or explicit GPU
   index selection (these indices need not match the speech engine).
-- Native 2× animation model; live-action 4× model followed by a Lanczos reduction
-  to 2× output. The labels distinguish this from a native 2× live-action model.
+- Native 2×/3×/4× animation models and a 4× live-action model, with aspect-aware
+  final resizing to the selected output dimensions.
 - Codec-aware automatic and explicit NVIDIA/AMD/Intel/CPU encoding, with quality,
   bitrate, speed, audio, and container controls described above.
 - Four-frame batches bound temporary storage independently of video duration.
@@ -62,22 +78,23 @@ selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 8-bit SDR, square-pixel, rotation-normalized files only. HDR/high-bit-depth and
 anamorphic files are rejected explicitly. Variable-frame-rate inputs become
-constant-frame-rate at their average rate. Output is fixed at 2×, with a maximum
-width/height of 7680. Frame-based restoration can flicker or invent detail.
+constant-frame-rate at their average rate. Source dimensions are limited to 3840
+pixels per side; output to 7680 per side. Frame-based restoration can flicker or
+invent detail.
 
 Enhancement currently works on the selected file, not unsaved censor edits or
 subtitle overlays. Export censor edits first; burn subtitles after enhancement.
 Side-by-side previews synchronize to the original player with drift correction;
 they are not a frame-locked scientific comparison.
 
-Resume after cancellation, selectable target resolutions, per-model downloads,
+Resume after cancellation, per-model downloads,
 GPU names from this backend, persisted enhancement preferences, automatic
 cross-workspace export composition, and wider hardware/quality validation remain
 future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-65 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+71 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -89,6 +106,11 @@ CPU SVT-AV1 with Opus in MKV, and bitrate-targeted H.264/AAC MP4. Codec metadata
 dimensions, and duration were checked. UI checks cover codec/vendor selection,
 dependent controls, audio/container compatibility, and 1280–1920 pixel layouts.
 AMD and Intel codec paths still need real-device verification.
+
+Resolution checks cover landscape, portrait, 4:3, square, ultrawide, even-pixel
+rounding, downscaling, model selection, and size limits. Real animation exports
+to 720p, 1080p, and 4K were checked for dimensions and duration, including native
+3×/4× model paths. A GUI-generated 1080p preview was also verified.
 
 The native preview executable was also launched on the Windows desktop and
 completed a six-frame 2× enhancement with NVENC encoding. Its writable working

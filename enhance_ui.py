@@ -5,9 +5,10 @@ from uuid import uuid4
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
     QGridLayout, QSpinBox, QDoubleSpinBox, QPushButton, QSlider, QFileDialog, QMessageBox, QStyle)
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaMetaData
 from subtitle_ui import action, VideoPreview
 from video_encoding import CODECS, ENCODER_LABELS
+from enhance_resolution import TARGETS, output_size, model_scale
 
 
 class EnhanceWorkspace(QWidget):
@@ -17,6 +18,7 @@ class EnhanceWorkspace(QWidget):
         super().__init__()
         self.host, self.root = host, root
         self.video_path = None
+        self.source_dimensions = None
         self.preview_path = None
         self.preview_start = 0
         self.preview_length = 0
@@ -25,7 +27,7 @@ class EnhanceWorkspace(QWidget):
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.setSpacing(12)
         heading = QHBoxLayout()
         title = QLabel('Enhance'); title.setObjectName('sectionTitle'); heading.addWidget(title)
-        self.summary = QLabel('2× AI upscaling · local processing'); self.summary.setObjectName('muted')
+        self.summary = QLabel('AI upscaling · local processing'); self.summary.setObjectName('muted')
         heading.addWidget(self.summary); heading.addStretch()
         self.install_button = action('Install enhancement models', self.install,
             'Download the optional, verified Real-ESRGAN engine and bundled models (43 MiB). Uses Vulkan on NVIDIA or AMD.')
@@ -34,7 +36,7 @@ class EnhanceWorkspace(QWidget):
         settings_row = QGridLayout(self.settings_panel); settings_row.setContentsMargins(16,12,16,12)
         settings_row.setHorizontalSpacing(20); settings_row.setVerticalSpacing(10)
         self.model = Combo(); self.model.addItem('Animation','animation'); self.model.addItem('Live action','live')
-        self.model.setToolTip('Animation uses a native 2× video model. Live action runs a 4× model, then reduces to 2× for the final output.')
+        self.model.setToolTip('Animation chooses a native 2×, 3×, or 4× video model for your target. Live action uses a 4× model. Lanczos resizing fits the AI result to the selected output resolution.')
         self.gpu = Combo(); self.gpu.addItem('Automatic','auto')
         for index in range(4): self.gpu.addItem(f'GPU {index}',str(index))
         self.gpu.setToolTip('Vulkan device index. Automatic lets the enhancement engine choose. Device numbering can differ from speech recognition.')
@@ -60,9 +62,12 @@ class EnhanceWorkspace(QWidget):
         self.audio_bitrate = Combo()
         for value in (128,192,256,320): self.audio_bitrate.addItem(f'{value} kbps',str(value))
         self.audio_bitrate.setCurrentIndex(1); self.audio_bitrate.setToolTip('Bitrate per audio track for AAC or Opus. Original and FLAC do not use a lossy bitrate setting.')
+        self.resolution = Combo()
+        for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
+        self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
         fields = [('Content',self.model),('AI graphics card',self.gpu),('Video codec',self.codec),('Video encoder',self.encoder),
                   ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),('Encoding speed',self.preset),
-                  ('File format',self.container),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate)]
+                  ('File format',self.container),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate),('Output resolution',self.resolution)]
         for index,(label,control) in enumerate(fields):
             column = QVBoxLayout(); column.setSpacing(5); column.addWidget(QLabel(label)); column.addWidget(control)
             settings_row.addLayout(column,index//4,index%4); settings_row.setColumnStretch(index%4,1)
@@ -78,6 +83,7 @@ class EnhanceWorkspace(QWidget):
             label = QLabel(title); box.addWidget(label)
             if player is self.enhanced: self.result_label = label
             video = VideoPreview(player); video.setMinimumSize(200,160); box.addWidget(video,1)
+            if player is self.original: video.video.nativeSizeChanged.connect(self.source_size_changed)
             previews.addWidget(panel,1)
         layout.addLayout(previews,1)
         controls = QHBoxLayout()
@@ -105,6 +111,7 @@ class EnhanceWorkspace(QWidget):
         for player in (self.original,self.enhanced):
             player.errorOccurred.connect(lambda error,text:self.host.set_status('Enhancement preview unavailable: '+text))
         self.original.durationChanged.connect(self.duration_changed)
+        self.original.metaDataChanged.connect(self.source_metadata_changed)
         self.original.positionChanged.connect(self.position_changed)
         self.original.playbackStateChanged.connect(self.play_state_changed)
         self.enhanced.mediaStatusChanged.connect(self.ready_preview)
@@ -113,7 +120,7 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(False)
 
     def settings(self):
-        values = {key:getattr(self,key).currentData() for key in ('model','gpu','codec','encoder','rate_control','preset','container','audio_bitrate')}
+        values = {key:getattr(self,key).currentData() for key in ('model','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','resolution')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
         return values
 
@@ -142,24 +149,54 @@ class EnhanceWorkspace(QWidget):
         folder = self.root/'tools/enhance/realesrgan-20220424'
         return all((folder/name).is_file() for name in ('realesrgan-ncnn-vulkan.exe',
             'models/realesr-animevideov3-x2.bin','models/realesr-animevideov3-x2.param',
+            'models/realesr-animevideov3-x3.bin','models/realesr-animevideov3-x3.param',
+            'models/realesr-animevideov3-x4.bin','models/realesr-animevideov3-x4.param',
             'models/realesrgan-x4plus.bin','models/realesrgan-x4plus.param'))
 
     def install(self):
         self.job_requested.emit(dict(action='enhance_install'))
 
     def load_video(self,path):
+        self.source_dimensions = None
         self.pause(); self.video_path = str(path); self.invalidate_preview()
         self.start.setValue(0); self.original.setSource(QUrl.fromLocalFile(str(path)))
-        self.hint.setText('2× output · 8-bit SDR · variable frame rates become constant. Export censor edits first; add subtitles after upscaling.')
         self.set_busy(self.busy)
 
     def clear_video(self):
+        self.source_dimensions = None
         self.pause(); self.video_path = None; self.original.setSource(QUrl()); self.invalidate_preview(); self.set_busy(self.busy)
+
+    def source_size_changed(self,size):
+        if self.video_path and not size.isEmpty():
+            self.source_dimensions = (round(size.width()),round(size.height()))
+            self.update_output_summary()
+
+    def source_metadata_changed(self):
+        size = self.original.metaData().value(QMediaMetaData.Key.Resolution)
+        if size is not None: self.source_size_changed(size)
+
+    def update_output_summary(self):
+        target = self.resolution.currentData()
+        if not self.video_path or not self.source_dimensions:
+            self.summary.setText('AI upscaling · '+TARGETS[target][0])
+            self.hint.setText('Select a video to see its output dimensions. Export censor edits first; add subtitles after upscaling.')
+            return
+        width,height = self.source_dimensions
+        try:
+            output = output_size(width,height,target)
+        except ValueError as exc:
+            self.summary.setText('Choose a smaller output'); self.hint.setText(str(exc)); return
+        self.summary.setText(f'{width} × {height} → {output[0]} × {output[1]}')
+        scale = model_scale(self.model.currentData(),width,height,output)
+        ratio = max(output[0]/width,output[1]/height)
+        detail = 'Downscales after AI enhancement.' if ratio < 1 else 'Additional enlargement beyond the AI model uses Lanczos resizing.' if ratio > scale else 'Aspect ratio preserved; no crop or stretch.'
+        self.hint.setText(f'{scale}× AI model · {detail} 8-bit SDR; variable frame rates become constant.')
 
     def invalidate_preview(self,*args):
         self.pause(); self.preview_path = None; self.enhanced.setSource(QUrl())
         self.result_label.setText('Enhanced · generate a preview')
         self.seek.setRange(0,self.original.duration())
+        self.update_output_summary()
 
     def duration_changed(self,duration):
         if not self.preview_path: self.seek.setRange(0,duration)
