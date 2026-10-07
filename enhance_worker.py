@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
+from collections import deque
 import urllib.request
 from uuid import uuid4
 import zipfile
@@ -117,6 +119,8 @@ def probe(video):
 
 
 def validate_settings(settings):
+    if settings.get('backend','auto') not in ('auto','cuda','vulkan'): raise ValueError('Choose a supported AI backend.')
+    if settings.get('restoration','balanced') not in ('balanced','detail'): raise ValueError('Choose Balanced or Detail restoration.')
     if settings.get('resolution', '2x') not in TARGETS: raise ValueError('Choose a supported output resolution.')
     model = settings.get('model', 'animation')
     if model not in MODELS: raise ValueError('Choose Animation or Live action.')
@@ -172,14 +176,48 @@ def read_frame(stream, size):
     return b''.join(parts)
 
 
+def select_backend(settings):
+    requested = settings.get('backend','auto')
+    if settings.get('model','animation') == 'animation':
+        if requested == 'cuda': raise ValueError('Animation currently uses Vulkan. Choose Automatic or Vulkan.')
+        return 'vulkan'
+    if requested == 'vulkan': return 'vulkan'
+    try:
+        import torch
+        available = torch.cuda.is_available()
+    except ImportError:
+        available = False
+    if available: return 'cuda'
+    if requested == 'cuda': raise ValueError('NVIDIA CUDA is unavailable. Install the NVIDIA runtime or choose Vulkan.')
+    return 'vulkan'
+
+
+class FrameProgress:
+    """Recent measured throughput; excludes downloads and model initialization."""
+    def __init__(self, total, clock=time.monotonic):
+        self.total, self.clock = total, clock
+        self.samples = deque([(clock(),0)])
+
+    def update(self, frames):
+        now = self.clock()
+        self.samples.append((now,frames))
+        while len(self.samples) > 2 and self.samples[1][0] < now-30:
+            self.samples.popleft()
+        elapsed = now-self.samples[0][0]
+        speed = (frames-self.samples[0][1])/elapsed if elapsed >= 1 and frames >= 2 else None
+        return dict(frames=frames,total_frames=self.total,speed_fps=speed,
+                    remaining_seconds=max(0,self.total-frames)/speed if speed else None)
+
+
 def enhance(job, emit):
     from PIL import Image
-    if not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
     video, output = Path(job['video']).resolve(), Path(job['output']).resolve()
     if not video.is_file(): raise ValueError('Choose an existing video.')
     if video == output or output.exists(): raise ValueError('Choose a new output filename; existing files are preserved.')
     if output.suffix.lower() not in ('.mp4', '.mkv'): raise ValueError('Choose an MP4 or MKV output.')
     model, gpu, quality, encoder = validate_settings(job.get('settings', {}))
+    backend = select_backend(job.get('settings', {}))
+    if backend == 'vulkan' and not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
     encoding = export_settings(job.get('settings', {}))
     info = probe(video)
     preview = job['action'] == 'enhance_preview'
@@ -208,6 +246,14 @@ def enhance(job, emit):
         requested = ('auto' if encoding['codec'] == 'h264' else 'auto_'+encoding['codec']) if encoder == 'auto' else encoder
         encoder = select_export_encoder(requested, quality, encoding['preset'],
             transforms=['-vf', f'scale={out_width}:{out_height}'], bitrate=encoding['bitrate'], fps=fps)
+        enhancer = None
+        if backend == 'cuda':
+            from enhance_cuda import CudaEnhancer
+            enhancer = CudaEnhancer(ROOT,job.get('settings',{}).get('restoration','balanced'),width,height,dimensions,gpu,emit)
+            engine_label = enhancer.name
+        else:
+            engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
+        emit('stage', message=f'Enhancing · {engine_label}', phase='enhance', percent=0)
         with ExitStack() as stack:
             decode_log = stack.enter_context((scratch/'decode.log').open('w+'))
             encode_log = stack.enter_context((scratch/'encode.log').open('w+'))
@@ -226,10 +272,25 @@ def enhance(job, emit):
             inputs, results = scratch/'input', scratch/'result'
             inputs.mkdir(); results.mkdir()
             count = 0
+            progress = FrameProgress(max(1,math.ceil(length*float(Fraction(fps)))))
+            last_report = time.monotonic()
             while True:
+                if enhancer is not None:
+                    raw = read_frame(decoder.stdout,width*height*3)
+                    if not raw: break
+                    writer.stdin.write(enhancer.process(raw))
+                    count += 1
+                    # Frame-level CUDA inference keeps weights resident and avoids PNG round trips.
+                    if time.monotonic()-last_report >= .5 or count == 1:
+                        metrics = progress.update(count)
+                        emit('stage',message=f'Enhancing · {count} frames · {out_width} × {out_height} · {engine_label}',
+                             phase='enhance',percent=min(98.,count/progress.total*98),**metrics)
+                        last_report = time.monotonic()
+                    continue
                 batch = []
-                # Small batches bound RAM and disk even on long recordings.
-                for index in range(4):
+                # Amortize Vulkan startup, with an estimated 384 MiB frame-file budget.
+                batch_size = max(1,min(16,(384*1024**2)//(width*height*3*(1+scale*scale))))
+                for index in range(batch_size):
                     raw = read_frame(decoder.stdout, width*height*3)
                     if not raw: break
                     name = f'{index:04}.png'
@@ -238,7 +299,7 @@ def enhance(job, emit):
                 if not batch: break
                 engine = MODELS[model][0]
                 args = [str(runtime_folder()/'realesrgan-ncnn-vulkan.exe'),'-i',str(inputs),'-o',str(results),
-                    '-m',str(runtime_folder()/'models'),'-n',engine,'-s',str(scale),'-t','128','-j','1:1:1','-f','png']
+                    '-m',str(runtime_folder()/'models'),'-n',engine,'-s',str(scale),'-t','0','-j','1:2:2','-f','png']
                 if gpu != 'auto': args += ['-g',gpu]
                 result = subprocess.run(args, capture_output=True, text=True, errors='replace', creationflags=FLAGS)
                 if result.returncode: raise RuntimeError('AI enhancement failed. Check the Vulkan driver or try another GPU. '+result.stderr[-500:])
@@ -251,9 +312,12 @@ def enhance(job, emit):
                     (inputs/name).unlink(); (results/name).unlink()
                     count += 1
                 percent = min(98.,count/(length*float(Fraction(fps)))*98)
-                emit('stage', message=f'Enhancing · {count} frames · {out_width} × {out_height} · {encoder}', percent=percent)
+                emit('stage', message=f'Enhancing · {count} frames · {out_width} × {out_height} · {engine_label}',
+                     phase='enhance',percent=percent,**progress.update(count))
             decoder.stdout.close()
             if decoder.wait() or not count: raise RuntimeError('Video decoding failed or produced no frames.')
+            emit('stage',message='Finalizing enhanced video…',phase='finish',percent=99,
+                 frames=count,total_frames=count,speed_fps=None,remaining_seconds=None)
             writer.stdin.close()
             if writer.wait():
                 encode_log.seek(0)
@@ -261,7 +325,7 @@ def enhance(job, emit):
         partial.rename(output)
         emit('enhance_preview' if preview else 'enhance_exported', output=str(output), start=start,
              length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
-             encoder=encoder, audio=encoding['audio'])
+             encoder=encoder, audio=encoding['audio'], backend=backend)
     finally:
         for process in (decoder,writer):
             if process is not None:

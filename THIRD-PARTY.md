@@ -53,3 +53,18 @@ directory. Engine source and MIT license:
 https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan . Model project and BSD-3-Clause
 license: https://github.com/xinntao/Real-ESRGAN . This optional archive is not
 bundled in JuicyCensor's installer.
+
+CUDA enhancement uses adapted BSD-3-Clause network definitions in
+`enhance_networks.py`: Real-ESRGAN SRVGGNetCompact from commit
+`a4abfb2979a7bbff3f69f58f58ae324608821e27` and BasicSR RRDBNet from commit
+`8d56e3a045f9fb3e1d8872f92ee4a4f07f886b0a`. Training initialization and registry
+dependencies were removed; pretrained parameter names and architectures remain
+compatible. Full notices are in `licenses/Real-ESRGAN-LICENSE.txt` and
+`licenses/BasicSR-LICENSE.txt`. Sources:
+https://github.com/xinntao/Real-ESRGAN and https://github.com/XPixelGroup/BasicSR .
+
+Optional CUDA weights download directly from the official Real-ESRGAN releases
+(v0.2.5.0 general/weak-denoise, v0.2.1 x2plus, v0.1.0 x4plus). Exact filenames,
+sizes, and SHA-256 digests are pinned in `enhance_cuda.py`. Weights are verified
+before loading and are not bundled in release installers. CUDA processing uses
+the existing private PyTorch environment and its retained license notices.

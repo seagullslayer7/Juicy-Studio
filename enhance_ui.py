@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
-    QGridLayout, QSpinBox, QDoubleSpinBox, QPushButton, QSlider, QFileDialog, QMessageBox, QStyle)
+    QGridLayout, QSpinBox, QDoubleSpinBox, QTabWidget, QPushButton, QSlider, QFileDialog, QMessageBox, QStyle)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaMetaData
 from subtitle_ui import action, VideoPreview
 from video_encoding import CODECS, ENCODER_LABELS
@@ -33,13 +33,18 @@ class EnhanceWorkspace(QWidget):
             'Download the optional, verified Real-ESRGAN engine and bundled models (43 MiB). Uses Vulkan on NVIDIA or AMD.')
         heading.addWidget(self.install_button); layout.addLayout(heading)
         self.settings_panel = QFrame(); self.settings_panel.setObjectName('card')
-        settings_row = QGridLayout(self.settings_panel); settings_row.setContentsMargins(16,12,16,12)
-        settings_row.setHorizontalSpacing(20); settings_row.setVerticalSpacing(10)
+        settings_box = QVBoxLayout(self.settings_panel); settings_box.setContentsMargins(12,8,12,8)
+        self.settings_tabs = QTabWidget(); settings_box.addWidget(self.settings_tabs)
         self.model = Combo(); self.model.addItem('Animation','animation'); self.model.addItem('Live action','live')
-        self.model.setToolTip('Animation chooses a native 2×, 3×, or 4× video model for your target. Live action uses a 4× model. Lanczos resizing fits the AI result to the selected output resolution.')
+        self.model.setToolTip('Live action can use persistent NVIDIA CUDA processing. Animation uses its native Vulkan models. Preview both options on your footage before exporting.')
+        self.backend = Combo()
+        for label,value in [('Automatic','auto'),('NVIDIA CUDA','cuda'),('Vulkan · NVIDIA / AMD','vulkan')]: self.backend.addItem(label,value)
+        self.backend.setToolTip('Automatic uses CUDA for live action when an NVIDIA runtime is ready; otherwise Vulkan. Animation uses Vulkan. CUDA keeps the model in GPU memory across frames. Video encoding is a separate setting.')
+        self.restoration = Combo(); self.restoration.addItem('Balanced · faster','balanced'); self.restoration.addItem('Detail · slower','detail')
+        self.restoration.setToolTip('CUDA live action: Balanced uses a lightweight general-video model with moderate denoising. Detail uses a heavier native 2× model for targets up to 2×, or 4× for larger targets. These produce different results; compare a preview. Vulkan live action uses the legacy Detail model.')
         self.gpu = Combo(); self.gpu.addItem('Automatic','auto')
         for index in range(4): self.gpu.addItem(f'GPU {index}',str(index))
-        self.gpu.setToolTip('Vulkan device index. Automatic lets the enhancement engine choose. Device numbering can differ from speech recognition.')
+        self.gpu.setToolTip('Device index within the selected AI backend. CUDA and Vulkan numbering can differ. Automatic chooses the default device. Switching backend resets this choice.')
         self.codec = Combo()
         for value,(label,_) in CODECS.items(): self.codec.addItem(label,value)
         self.codec.setToolTip('H.264 has broad playback support. HEVC and AV1 can reduce file size but require compatible players. Output remains 8-bit SDR.')
@@ -65,14 +70,20 @@ class EnhanceWorkspace(QWidget):
         self.resolution = Combo()
         for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
         self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
-        fields = [('Content',self.model),('AI graphics card',self.gpu),('Video codec',self.codec),('Video encoder',self.encoder),
-                  ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),('Encoding speed',self.preset),
-                  ('File format',self.container),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate),('Output resolution',self.resolution)]
-        for index,(label,control) in enumerate(fields):
-            column = QVBoxLayout(); column.setSpacing(5); column.addWidget(QLabel(label)); column.addWidget(control)
-            settings_row.addLayout(column,index//4,index%4); settings_row.setColumnStretch(index%4,1)
-            signal = control.valueChanged if isinstance(control,(QSpinBox,QDoubleSpinBox)) else control.currentIndexChanged
-            signal.connect(lambda *args,c=control:self.settings_changed(c))
+        groups = [('Enhancement',[('Content',self.model),('AI backend',self.backend),('AI graphics card',self.gpu),
+                                 ('Restoration',self.restoration),('Output resolution',self.resolution)]),
+                  ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
+                               ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),
+                               ('Encoding speed',self.preset),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate)])]
+        for title,fields in groups:
+            page=QWidget(); settings_row=QGridLayout(page); settings_row.setContentsMargins(8,8,8,8)
+            settings_row.setHorizontalSpacing(20); settings_row.setVerticalSpacing(8)
+            for index,(label,control) in enumerate(fields):
+                column = QVBoxLayout(); column.setSpacing(4); column.addWidget(QLabel(label)); column.addWidget(control)
+                settings_row.addLayout(column,index//3,index%3); settings_row.setColumnStretch(index%3,1)
+                signal = control.valueChanged if isinstance(control,(QSpinBox,QDoubleSpinBox)) else control.currentIndexChanged
+                signal.connect(lambda *args,c=control:self.settings_changed(c))
+            self.settings_tabs.addTab(page,title)
         layout.addWidget(self.settings_panel)
         previews = QHBoxLayout(); previews.setSpacing(12)
         self.original = QMediaPlayer(self); self.enhanced = QMediaPlayer(self)
@@ -120,7 +131,7 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(False)
 
     def settings(self):
-        values = {key:getattr(self,key).currentData() for key in ('model','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','resolution')}
+        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','resolution')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
         return values
 
@@ -134,6 +145,10 @@ class EnhanceWorkspace(QWidget):
         self.encoder.blockSignals(False)
 
     def settings_changed(self,control=None):
+        if control is self.backend: self.gpu.setCurrentIndex(0)
+        if control is self.model and self.model.currentData() == 'animation' and self.backend.currentData() == 'cuda':
+            self.backend.setCurrentIndex(0)
+        self.restoration.setEnabled(self.uses_cuda())
         if control is self.codec: self.populate_encoders()
         if control is self.audio_encoder and self.audio_encoder.currentData() in ('libopus','flac'):
             self.container.setCurrentIndex(self.container.findData('mkv'))
@@ -143,8 +158,14 @@ class EnhanceWorkspace(QWidget):
         self.bitrate.setEnabled(self.rate_control.currentData() == 'bitrate')
         self.audio_bitrate.setEnabled(self.audio_encoder.currentData() in ('aac','libopus'))
         self.invalidate_preview()
+        self.set_busy(self.busy)
+
+    def uses_cuda(self):
+        return self.model.currentData() == 'live' and (self.backend.currentData() == 'cuda' or
+            (self.backend.currentData() == 'auto' and getattr(self.host,'cuda_available',False)))
 
     def installed(self):
+        if self.uses_cuda(): return True  # Verified CUDA model weights download on first use.
         # GUI can be frozen; the tools always belong beside the application.
         folder = self.root/'tools/enhance/realesrgan-20220424'
         return all((folder/name).is_file() for name in ('realesrgan-ncnn-vulkan.exe',
@@ -188,6 +209,11 @@ class EnhanceWorkspace(QWidget):
             self.summary.setText('Choose a smaller output'); self.hint.setText(str(exc)); return
         self.summary.setText(f'{width} × {height} → {output[0]} × {output[1]}')
         scale = model_scale(self.model.currentData(),width,height,output)
+        if self.uses_cuda():
+            if self.restoration.currentData() == 'detail' and max(output[0]/width,output[1]/height) <= 2: scale=2
+            profile = 'Balanced' if self.restoration.currentData() == 'balanced' else 'Detail'
+            self.hint.setText(f'CUDA · {profile} · native {scale}× AI, resized to target · first use downloads verified model weights. Preview to compare detail and texture.')
+            return
         ratio = max(output[0]/width,output[1]/height)
         detail = 'Downscales after AI enhancement.' if ratio < 1 else 'Additional enlargement beyond the AI model uses Lanczos resizing.' if ratio > scale else 'Aspect ratio preserved; no crop or stretch.'
         self.hint.setText(f'{scale}× AI model · {detail} 8-bit SDR; variable frame rates become constant.')
@@ -283,6 +309,7 @@ class EnhanceWorkspace(QWidget):
 
     def set_busy(self,busy):
         self.busy = busy; available = bool(self.video_path) and not busy
+        self.restoration.setEnabled(self.uses_cuda())
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

@@ -934,7 +934,7 @@ class MainWindow(QMainWindow):
         self.remaining_label = QLabel('')
         self.remaining_label.setObjectName('remainingTime')
         self.remaining_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.remaining_label.setToolTip('Approximate time left for the current video. The first estimate uses video length and processing settings, then updates from live progress. Model downloads and slower batches can increase it.')
+        self.remaining_label.setToolTip('Approximate time left for the current video, updated from live progress. Enhancement uses recent completed frames and shows frames per second; downloads and model loading are excluded. The estimate can increase when processing slows.')
         statusbar.insertWidget(1, self.elapsed_label)
         statusbar.insertWidget(2, self.remaining_label)
         self.waveform = WaveformLoader(ROOT, self)
@@ -1273,8 +1273,18 @@ class MainWindow(QMainWindow):
             self.remaining_label.clear()
             return
         if self.job.get('action') in ('enhance_preview', 'enhance_export'):
-            percent = self.progress.value()
-            remaining = elapsed * (100-percent) / percent if percent > 0 else None
+            measured = getattr(self,'enhancement_metrics',None)
+            if getattr(self,'enhancement_phase','load') == 'finish':
+                self.remaining_label.setText('Finalizing video…'); return
+            if not measured or measured.get('remaining_seconds') is None:
+                self.remaining_label.setText('Estimating… · waiting for processed frames'); return
+            remaining = measured['remaining_seconds']
+            speed = measured.get('speed_fps') or 0
+            age = time.monotonic()-self.enhancement_measured_at
+            if age > max(5,3/max(speed,.001)):
+                self.remaining_label.setText(f'Processing next frames… · last speed {speed:.2f} fps'); return
+            self.remaining_label.setText(f'{speed:.2f} fps · About {format_duration(max(1,remaining))} remaining')
+            return
         else:
             remaining = self.time_estimate.remaining() if self.time_estimate else None
         if remaining is not None:
@@ -1588,6 +1598,8 @@ class MainWindow(QMainWindow):
         self.job, self.job_path = job, path
         self.cancelled, self.received_result, self.buffer = False, False, ''
         self.worker_error = None
+        self.enhancement_metrics = None
+        self.enhancement_phase = 'load'
         self.log = log
         environment = os.environ.copy()
         environment['PYTHONIOENCODING'] = 'utf-8'
@@ -1644,6 +1656,14 @@ class MainWindow(QMainWindow):
             self.set_status(data['message'])
             if 'percent' in data:
                 self.progress.setValue(max(self.progress.value(), min(99, int(data['percent']))))
+                if self.job.get('action') in ('enhance_preview','enhance_export'):
+                    percent = max(0,min(99,float(data['percent'])))
+                    self.progress.setFormat(f'{percent:.2f}%' if percent < 1 else f'{percent:.1f}%')
+            if self.job.get('action') in ('enhance_preview','enhance_export'):
+                self.enhancement_phase = data.get('phase',self.enhancement_phase)
+                if 'frames' in data:
+                    self.enhancement_metrics = data
+                    self.enhancement_measured_at = time.monotonic()
             elif self.job.get('action') == 'download':
                 match = re.search(r'(\d+)%', data['message'])
                 if match:
