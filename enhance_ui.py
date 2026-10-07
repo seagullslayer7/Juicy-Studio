@@ -4,15 +4,16 @@ from uuid import uuid4
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QVBoxLayout, QHBoxLayout,
-    QFormLayout, QPushButton, QSlider, QFileDialog, QMessageBox, QStyle)
+    QGridLayout, QSpinBox, QDoubleSpinBox, QPushButton, QSlider, QFileDialog, QMessageBox, QStyle)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from subtitle_ui import action, VideoPreview
+from video_encoding import CODECS, ENCODER_LABELS
 
 
 class EnhanceWorkspace(QWidget):
     job_requested = Signal(dict)
 
-    def __init__(self, host, root, Combo, Timestamp):
+    def __init__(self, host, root, Combo, Timestamp, Spin=QDoubleSpinBox):
         super().__init__()
         self.host, self.root = host, root
         self.video_path = None
@@ -30,22 +31,43 @@ class EnhanceWorkspace(QWidget):
             'Download the optional, verified Real-ESRGAN engine and bundled models (43 MiB). Uses Vulkan on NVIDIA or AMD.')
         heading.addWidget(self.install_button); layout.addLayout(heading)
         self.settings_panel = QFrame(); self.settings_panel.setObjectName('card')
-        settings_row = QHBoxLayout(self.settings_panel); settings_row.setContentsMargins(16,12,16,12); settings_row.setSpacing(24)
+        settings_row = QGridLayout(self.settings_panel); settings_row.setContentsMargins(16,12,16,12)
+        settings_row.setHorizontalSpacing(20); settings_row.setVerticalSpacing(10)
         self.model = Combo(); self.model.addItem('Animation','animation'); self.model.addItem('Live action','live')
         self.model.setToolTip('Animation uses a native 2× video model. Live action runs a 4× model, then reduces to 2× for the final output.')
         self.gpu = Combo(); self.gpu.addItem('Automatic','auto')
         for index in range(4): self.gpu.addItem(f'GPU {index}',str(index))
         self.gpu.setToolTip('Vulkan device index. Automatic lets the enhancement engine choose. Device numbering can differ from speech recognition.')
-        self.encoder = Combo()
-        for label,value in [('Automatic','auto'),('NVIDIA H.264','h264_nvenc'),('AMD H.264','h264_amf'),('CPU H.264','libx264')]: self.encoder.addItem(label,value)
-        self.encoder.setToolTip('Automatic tests available encoders. Encoding is separate from the GPU running the AI model.')
-        self.quality = Combo()
-        for label,value in [('Very high','16'),('High','18'),('Balanced','23')]: self.quality.addItem(label,value)
-        self.quality.setCurrentIndex(1)
-        self.quality.setToolTip('Controls video compression after upscaling. Audio is copied without re-encoding.')
-        for label,control in [('Content',self.model),('Graphics card',self.gpu),('Encoder',self.encoder),('Quality',self.quality)]:
-            column = QVBoxLayout(); column.addWidget(QLabel(label)); column.addWidget(control); settings_row.addLayout(column,1)
-            control.currentIndexChanged.connect(self.invalidate_preview)
+        self.codec = Combo()
+        for value,(label,_) in CODECS.items(): self.codec.addItem(label,value)
+        self.codec.setToolTip('H.264 has broad playback support. HEVC and AV1 can reduce file size but require compatible players. Output remains 8-bit SDR.')
+        self.encoder = Combo(); self.populate_encoders()
+        self.encoder.setToolTip('Automatic tries working hardware, then CPU, for the selected codec. Manual choices are tested before upscaling. Availability depends on your GPU, driver, and FFmpeg build. AI processing uses its own GPU setting.')
+        self.rate_control = Combo(); self.rate_control.addItem('Quality target','quality'); self.rate_control.addItem('Bitrate target','bitrate')
+        self.rate_control.setToolTip('Quality target lets file size vary with the scene. Bitrate target sets an average video bitrate; actual size and bitrate can vary.')
+        self.quality = Spin(); self.quality.setDecimals(0); self.quality.setRange(0,51); self.quality.setValue(18)
+        self.quality.setToolTip('Lower values preserve more detail and use more space. Try 18 for high quality or 23 for smaller files. This uses CRF/CQ/QP depending on the encoder; values are not equivalent across codecs and 0 is not a universal lossless mode.')
+        self.bitrate = Spin(); self.bitrate.setRange(.1,200); self.bitrate.setDecimals(1); self.bitrate.setSingleStep(1); self.bitrate.setValue(12); self.bitrate.setSuffix(' Mbps')
+        self.bitrate.setToolTip('Average video bitrate, excluding audio. Higher resolutions and frame rates generally need more bitrate. This is not a strict file-size limit.')
+        self.preset = Combo()
+        for label,value in [('Fast','fast'),('Balanced','medium'),('Slower · better compression','slow')]: self.preset.addItem(label,value)
+        self.preset.setCurrentIndex(1); self.preset.setToolTip('Controls encoding effort, not AI speed. Slower settings may improve compression. CPU HEVC and AV1 can be slow.')
+        self.container = Combo(); self.container.addItem('Matroska (.mkv)','mkv'); self.container.addItem('MP4 (.mp4)','mp4')
+        self.container.setToolTip('MKV supports all offered audio formats. MP4 uses AAC or compatible original audio. HEVC MP4 uses the hvc1 tag for player compatibility.')
+        self.audio_encoder = Combo()
+        for label,value in [('Original · copy all tracks','copy'),('AAC','aac'),('Opus · MKV','libopus'),('FLAC · lossless, MKV','flac')]: self.audio_encoder.addItem(label,value)
+        self.audio_encoder.setToolTip('Original copies every audio track without quality loss. AAC/Opus re-encode all tracks. FLAC stores decoded audio losslessly but cannot recover detail already lost in a compressed source. Opus and FLAC select MKV.')
+        self.audio_bitrate = Combo()
+        for value in (128,192,256,320): self.audio_bitrate.addItem(f'{value} kbps',str(value))
+        self.audio_bitrate.setCurrentIndex(1); self.audio_bitrate.setToolTip('Bitrate per audio track for AAC or Opus. Original and FLAC do not use a lossy bitrate setting.')
+        fields = [('Content',self.model),('AI graphics card',self.gpu),('Video codec',self.codec),('Video encoder',self.encoder),
+                  ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),('Encoding speed',self.preset),
+                  ('File format',self.container),('Audio',self.audio_encoder),('Audio bitrate',self.audio_bitrate)]
+        for index,(label,control) in enumerate(fields):
+            column = QVBoxLayout(); column.setSpacing(5); column.addWidget(QLabel(label)); column.addWidget(control)
+            settings_row.addLayout(column,index//4,index%4); settings_row.setColumnStretch(index%4,1)
+            signal = control.valueChanged if isinstance(control,(QSpinBox,QDoubleSpinBox)) else control.currentIndexChanged
+            signal.connect(lambda *args,c=control:self.settings_changed(c))
         layout.addWidget(self.settings_panel)
         previews = QHBoxLayout(); previews.setSpacing(12)
         self.original = QMediaPlayer(self); self.enhanced = QMediaPlayer(self)
@@ -76,7 +98,7 @@ class EnhanceWorkspace(QWidget):
         self.length.setCurrentIndex(1); footer.addWidget(self.length)
         footer.addStretch()
         self.preview_button = action('Generate preview',self.generate_preview,'Enhance only this short section and compare before exporting',True)
-        self.export_button = action('Export enhanced video…',self.export,'Enhance the complete selected file to MP4 or MKV; keep all original audio tracks')
+        self.export_button = action('Export enhanced video…',self.export,'Enhance the complete selected file using the chosen video, audio, and format settings')
         footer.addWidget(self.preview_button); footer.addWidget(self.export_button); layout.addLayout(footer)
         self.hint = QLabel('Select a video from the shared queue. Export censor edits first; add subtitle burn-in after upscaling.')
         self.hint.setWordWrap(True); self.hint.setObjectName('muted'); layout.addWidget(self.hint)
@@ -87,10 +109,33 @@ class EnhanceWorkspace(QWidget):
         self.original.playbackStateChanged.connect(self.play_state_changed)
         self.enhanced.mediaStatusChanged.connect(self.ready_preview)
         self.timer = QTimer(self); self.timer.setInterval(100); self.timer.timeout.connect(self.synchronize); self.timer.start()
+        self.settings_changed()
         self.set_busy(False)
 
     def settings(self):
-        return {key:getattr(self,key).currentData() for key in ('model','gpu','encoder','quality')}
+        values = {key:getattr(self,key).currentData() for key in ('model','gpu','codec','encoder','rate_control','preset','container','audio_bitrate')}
+        values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
+        return values
+
+    def populate_encoders(self):
+        previous = self.encoder.currentData()
+        vendor = previous.split('_')[-1] if previous and '_' in previous else 'cpu' if previous and previous.startswith('lib') else 'auto'
+        self.encoder.blockSignals(True); self.encoder.clear(); self.encoder.addItem('Automatic · prefer hardware','auto')
+        for name in CODECS[self.codec.currentData()][1]:
+            self.encoder.addItem(ENCODER_LABELS.get(name,ENCODER_LABELS.get(name.split('_')[-1])),name)
+            if (vendor == 'cpu' and name.startswith('lib')) or name.endswith('_'+vendor): self.encoder.setCurrentIndex(self.encoder.count()-1)
+        self.encoder.blockSignals(False)
+
+    def settings_changed(self,control=None):
+        if control is self.codec: self.populate_encoders()
+        if control is self.audio_encoder and self.audio_encoder.currentData() in ('libopus','flac'):
+            self.container.setCurrentIndex(self.container.findData('mkv'))
+        elif control is self.container and self.container.currentData() == 'mp4' and self.audio_encoder.currentData() in ('libopus','flac'):
+            self.audio_encoder.setCurrentIndex(self.audio_encoder.findData('aac'))
+        self.quality.setEnabled(self.rate_control.currentData() == 'quality')
+        self.bitrate.setEnabled(self.rate_control.currentData() == 'bitrate')
+        self.audio_bitrate.setEnabled(self.audio_encoder.currentData() in ('aac','libopus'))
+        self.invalidate_preview()
 
     def installed(self):
         # GUI can be frozen; the tools always belong beside the application.
@@ -133,9 +178,13 @@ class EnhanceWorkspace(QWidget):
 
     def export(self):
         if not self.video_path or self.busy: return
-        name = str(Path(self.video_path).with_name(Path(self.video_path).stem+'_enhanced.mkv'))
-        output,_ = QFileDialog.getSaveFileName(self,'Export enhanced video',name,'Matroska (*.mkv);;MP4 (*.mp4)')
+        suffix = self.container.currentData()
+        name = str(Path(self.video_path).with_name(Path(self.video_path).stem+'_enhanced.'+suffix))
+        output,_ = QFileDialog.getSaveFileName(self,'Export enhanced video',name,'Matroska (*.mkv)' if suffix == 'mkv' else 'MP4 (*.mp4)')
         if not output: return
+        if not Path(output).suffix: output += '.'+suffix
+        if Path(output).suffix.lower() != '.'+suffix:
+            QMessageBox.information(self,'File format mismatch','Use the selected file extension, or change File format before exporting.'); return
         if Path(output).exists():
             QMessageBox.information(self,'Choose a new filename','Existing files are preserved. Choose a different output filename.'); return
         self.pause()
@@ -154,7 +203,8 @@ class EnhanceWorkspace(QWidget):
             self.host.set_status('Preview ready. Play both panels to compare the same section.')
         elif data['type'] == 'enhance_exported':
             self.host.last_output = data['output']; self.host.open_result_btn.setEnabled(True)
-            self.host.set_status('Enhanced video exported. Original audio copied without re-encoding.')
+            audio = 'Original audio copied without re-encoding.' if data.get('audio','copy') == 'copy' else 'Audio encoded as '+data['audio'].replace('libopus','Opus').upper()+'.'
+            self.host.set_status('Enhanced video exported. '+audio)
 
     def ready_preview(self,status):
         if self.preview_path and status == QMediaPlayer.MediaStatus.LoadedMedia: self.seek_to(0)

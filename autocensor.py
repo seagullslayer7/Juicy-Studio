@@ -405,37 +405,7 @@ def build_custom_beep_filter(
     return ";".join(parts)
 
 
-def encoder_options(encoder: str, quality: str, preset: str) -> list[str]:
-    options = {
-        'libx264': ['-crf', quality, '-preset', preset],
-        'h264_nvenc': ['-preset', {'fast':'p1', 'medium':'p4', 'slow':'p7'}[preset], '-rc', 'vbr', '-cq', quality, '-b:v', '0'],
-        'h264_amf': ['-quality', {'fast':'speed', 'medium':'balanced', 'slow':'quality'}[preset], '-rc', 'cqp', '-qp_i', quality, '-qp_p', quality],
-        'h264_qsv': ['-preset', preset, '-global_quality', quality]}
-    template = 'libx264' if encoder == 'libx265' else 'h264_' + encoder.split('_')[-1] if encoder.startswith(('hevc_', 'av1_')) else encoder
-    return ['-c:v', encoder, *options[template], '-pix_fmt', 'yuv420p']
-
-
-def select_export_encoder(requested: str, quality: str, preset: str, video=None, transforms=()) -> str:
-    candidates = ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264'] if requested == 'auto' else [requested]
-    for encoder in candidates:
-        if encoder not in ('h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264', 'hevc_nvenc', 'hevc_amf', 'hevc_qsv', 'av1_nvenc', 'libx265'):
-            raise ValueError('Unsupported export encoder')
-        source = ['-i', str(video)] if video else ['-f', 'lavfi', '-i', 'color=size=640x480:rate=30']
-        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', *source,
-                   '-map', '0:v:0', '-an', '-frames:v', '3',
-                   *encoder_options(encoder, quality, preset), *transforms, '-f', 'null', '-']
-        try:
-            probe = subprocess.run(command, capture_output=True, text=True, timeout=20,
-                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            if probe.returncode == 0:
-                print(f'Export encoder: {encoder}', flush=True)
-                return encoder
-            detail = probe.stderr[-600:]
-        except subprocess.TimeoutExpired:
-            detail = 'Encoder initialization timed out.'
-        if requested != 'auto':
-            raise RuntimeError(f'{encoder} is unavailable. Choose Automatic or CPU in Settings. {detail}')
-    raise RuntimeError('No usable export encoder was found. Check the FFmpeg installation.')
+from video_encoding import encoder_options, select_export_encoder
 
 
 def original_audio_bitrate(video) -> str:

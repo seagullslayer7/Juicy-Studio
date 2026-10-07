@@ -240,10 +240,11 @@ class Settings(QDialog):
                 ('High quality · larger file', 'high'), ('Balanced', 'balanced'),
                 ('Smaller file', 'small'), ('Custom', 'custom')]),
             ('export_encoder', 'Video encoder', 'copy' if config.get('export_quality', 'original') == 'original' else 'auto', [
-                ('Automatic · prefer hardware', 'auto'), ('Hardware (NVIDIA, H.264)', 'h264_nvenc'), ('Hardware (NVIDIA, HEVC)', 'hevc_nvenc'), ('Hardware (NVIDIA, AV1)', 'av1_nvenc'),
-                ('Hardware (AMD, H.264)', 'h264_amf'), ('Hardware (AMD, HEVC)', 'hevc_amf'),
-                ('Hardware (Intel, H.264)', 'h264_qsv'), ('Hardware (Intel, HEVC)', 'hevc_qsv'),
-                ('Software (x264, H.264)', 'libx264'), ('Software (x265, HEVC)', 'libx265'), ('Copy original video', 'copy')]),
+                ('Automatic · H.264', 'auto'), ('Automatic · H.265 / HEVC', 'auto_hevc'), ('Automatic · AV1', 'auto_av1'),
+                ('Hardware (NVIDIA, H.264)', 'h264_nvenc'), ('Hardware (NVIDIA, HEVC)', 'hevc_nvenc'), ('Hardware (NVIDIA, AV1)', 'av1_nvenc'),
+                ('Hardware (AMD, H.264)', 'h264_amf'), ('Hardware (AMD, HEVC)', 'hevc_amf'), ('Hardware (AMD, AV1)', 'av1_amf'),
+                ('Hardware (Intel, H.264)', 'h264_qsv'), ('Hardware (Intel, HEVC)', 'hevc_qsv'), ('Hardware (Intel, AV1)', 'av1_qsv'),
+                ('Software (x264, H.264)', 'libx264'), ('Software (x265, HEVC)', 'libx265'), ('Software (SVT-AV1)', 'libsvtav1'), ('Copy original video', 'copy')]),
             ('export_format', 'Export format', 'mp4', [('MP4 (.mp4)', 'mp4'), ('Matroska (.mkv)', 'mkv')]),
             ('export_audio_encoder', 'Audio encoder', 'aac', [('AAC · widely compatible', 'aac'), ('Opus · Matroska only', 'libopus')]),
             ('export_video_quality', 'Video quality', {'high': '18', 'small': '28'}.get(config.get('export_quality'), '23'), [
@@ -270,7 +271,7 @@ class Settings(QDialog):
         self.export_controls['export_quality'].currentIndexChanged.connect(self.update_export_controls)
         tips = {
             'export_quality': 'Apply a preset. Editing any individual export option switches to Custom.',
-            'export_encoder': 'Automatic selects working H.264 hardware, then CPU. HEVC and AV1 can save space but need compatible players. Manual selections are tested before export. Copy preserves the original video stream.',
+            'export_encoder': 'Automatic tests hardware, then CPU, for the selected codec. HEVC and AV1 can save space but need compatible players. Manual selections are tested before export. Availability depends on your GPU and driver. Copy preserves the original video stream.',
             'export_format': 'MP4 is widely compatible. Matroska supports Opus audio. Selecting MP4 switches Opus to AAC.',
             'export_audio_encoder': 'AAC works with MP4 and Matroska. Choosing Opus switches the format to Matroska.',
             'export_video_quality': 'Original preserves the existing video stream. High, Balanced, and Smaller file re-encode the video. Results vary by encoder.',
@@ -282,7 +283,7 @@ class Settings(QDialog):
             combo.setToolTip(tips[key])
             if key != 'export_quality':
                 combo.currentIndexChanged.connect(lambda _, key=key: self.custom_export(key))
-        export_note = QLabel('Choose where and how to save your censored copy. Original files remain unchanged.\n\nAutomatic selects an available H.264 hardware encoder and falls back to the CPU. You can also select HEVC or AV1 where supported.\n\nChanging an option selects the Custom preset. Export settings apply without analyzing the video again.')
+        export_note = QLabel('Choose where and how to save your censored copy. Original files remain unchanged.\n\nAutomatic tests available hardware for your chosen codec and falls back to CPU encoding. H.264 offers broad compatibility; HEVC and AV1 require compatible players.\n\nChanging an option selects the Custom preset. Export settings apply without analyzing the video again.')
         export_note.setWordWrap(True)
         export_note.setObjectName('muted')
         export_form.addRow(export_note)
@@ -908,7 +909,7 @@ class MainWindow(QMainWindow):
         self.subtitles.job_requested.connect(self.start_job)
         self.workspaces.addWidget(self.subtitles)
         from enhance_ui import EnhanceWorkspace
-        self.enhance = EnhanceWorkspace(self, ROOT, CitrusComboBox, TimestampEdit)
+        self.enhance = EnhanceWorkspace(self, ROOT, CitrusComboBox, TimestampEdit, TriangleSpinBox)
         self.enhance.job_requested.connect(self.start_job)
         self.workspaces.addWidget(self.enhance)
         self.workspace_tabs.currentChanged.connect(self.switch_workspace)

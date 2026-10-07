@@ -17,6 +17,7 @@ import subprocess
 import urllib.request
 from uuid import uuid4
 import zipfile
+from video_encoding import CODECS, encoder_options, select_export_encoder
 
 ROOT = Path(__file__).resolve().parent
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -118,10 +119,43 @@ def validate_settings(settings):
     gpu = str(settings.get('gpu', 'auto'))
     if gpu != 'auto' and not re.fullmatch(r'[0-9]{1,2}', gpu): raise ValueError('Invalid graphics device.')
     quality = str(settings.get('quality', '18'))
-    if quality not in ('16', '18', '23'): raise ValueError('Unsupported enhancement quality.')
+    if not quality.isdigit() or not 0 <= int(quality) <= 51: raise ValueError('Video quality must be between 0 and 51.')
     encoder = settings.get('encoder', 'auto')
-    if encoder not in ('auto', 'libx264', 'h264_nvenc', 'h264_amf'): raise ValueError('Unsupported enhancement encoder.')
+    export_settings(settings)
     return model, gpu, quality, encoder
+
+
+def export_settings(settings):
+    encoder = settings.get('encoder', 'auto')
+    inferred = next((c for c, (_, encoders) in CODECS.items() if encoder in encoders), 'h264')
+    codec = settings.get('codec', inferred)
+    if codec not in CODECS or encoder not in ('auto', *CODECS[codec][1]):
+        raise ValueError('Choose an encoder compatible with the selected video codec.')
+    rate = settings.get('rate_control', 'quality')
+    if rate not in ('quality', 'bitrate'): raise ValueError('Unsupported rate control.')
+    bitrate = str(settings.get('bitrate', '12000000')) if rate == 'bitrate' else None
+    preset = settings.get('preset', 'medium')
+    encoder_options(CODECS[codec][1][-1], str(settings.get('quality', '18')), preset, bitrate)
+    audio = settings.get('audio', 'copy')
+    if audio not in ('copy', 'aac', 'libopus', 'flac'): raise ValueError('Unsupported audio encoder.')
+    audio_bitrate = str(settings.get('audio_bitrate', '192'))
+    if audio_bitrate not in ('128', '192', '256', '320'): raise ValueError('Unsupported audio bitrate.')
+    container = settings.get('container', 'mkv')
+    if container not in ('mp4', 'mkv'): raise ValueError('Choose MP4 or MKV.')
+    return dict(codec=codec, encoder=encoder, preset=preset, bitrate=bitrate, audio=audio,
+                audio_bitrate=audio_bitrate, container=container)
+
+
+def audio_options(settings, suffix, streams):
+    audio = settings['audio']
+    if suffix == '.mp4':
+        if audio in ('libopus', 'flac'):
+            raise ValueError('Choose MKV for Opus/FLAC audio, or AAC for MP4.')
+        if audio == 'copy' and any(s.get('codec_name') not in ('aac','mp3','ac3','eac3','alac') for s in streams):
+            raise ValueError('Choose MKV to preserve this video’s audio format, or select AAC for MP4.')
+    options = ['-c:a', audio]
+    if audio in ('aac', 'libopus'): options += ['-b:a', settings['audio_bitrate']+'k']
+    return options
 
 
 def read_frame(stream, size):
@@ -136,13 +170,13 @@ def read_frame(stream, size):
 
 def enhance(job, emit):
     from PIL import Image
-    import autocensor as core
     if not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
     video, output = Path(job['video']).resolve(), Path(job['output']).resolve()
     if not video.is_file(): raise ValueError('Choose an existing video.')
     if video == output or output.exists(): raise ValueError('Choose a new output filename; existing files are preserved.')
     if output.suffix.lower() not in ('.mp4', '.mkv'): raise ValueError('Choose an MP4 or MKV output.')
     model, gpu, quality, encoder = validate_settings(job.get('settings', {}))
+    encoding = export_settings(job.get('settings', {}))
     info = probe(video)
     preview = job['action'] == 'enhance_preview'
     start = float(job.get('start', 0)) if preview else 0.
@@ -151,8 +185,7 @@ def enhance(job, emit):
     length = min(float(job.get('length', 5)), info['duration'] - start) if preview else info['duration']
     if not math.isfinite(start + length) or start < 0 or length <= 0 or (preview and length > 10):
         raise ValueError('Choose a preview of up to 10 seconds within the video.')
-    if output.suffix.lower() == '.mp4' and any(s.get('codec_name') not in ('aac','mp3','ac3','eac3','alac') for s in info['audio']):
-        raise ValueError('Choose MKV to preserve this video’s audio format without re-encoding.')
+    audio_args = audio_options(encoding, output.suffix.lower(), info['audio'])
     token = job.get('partial_token', '')
     if not re.fullmatch('[0-9a-f]{32}', token): raise ValueError('Invalid enhancement job identifier.')
     parent = ROOT / 'cache' / 'enhance-jobs'
@@ -165,7 +198,9 @@ def enhance(job, emit):
     decoder = writer = None
     try:
         emit('stage', message='Preparing 2× enhancement', percent=0)
-        encoder = core.select_export_encoder(encoder, quality, 'medium', transforms=['-vf', f'scale={width*2}:{height*2}'])
+        requested = ('auto' if encoding['codec'] == 'h264' else 'auto_'+encoding['codec']) if encoder == 'auto' else encoder
+        encoder = select_export_encoder(requested, quality, encoding['preset'],
+            transforms=['-vf', f'scale={width*2}:{height*2}'], bitrate=encoding['bitrate'], fps=fps)
         with ExitStack() as stack:
             decode_log = stack.enter_context((scratch/'decode.log').open('w+'))
             encode_log = stack.enter_context((scratch/'encode.log').open('w+'))
@@ -175,8 +210,10 @@ def enhance(job, emit):
             command = ['ffmpeg','-v','error','-nostdin','-n','-f','rawvideo','-pix_fmt','rgb24',
                 '-s',f'{width*2}x{height*2}','-r',fps,'-i','pipe:0','-ss',str(start),'-i',str(video),
                 '-map','0:v:0','-map','1:a?','-map_metadata','1','-t',str(length),
-                *core.encoder_options(encoder,quality,'medium'),'-c:a','copy','-avoid_negative_ts','disabled']
-            if output.suffix.lower() == '.mp4': command += ['-movflags','+faststart']
+                *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),*audio_args,'-avoid_negative_ts','disabled']
+            if output.suffix.lower() == '.mp4':
+                command += ['-movflags','+faststart']
+                if encoding['codec'] == 'hevc': command += ['-tag:v','hvc1']
             writer = subprocess.Popen(command + [str(partial)], stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL, stderr=encode_log, creationflags=FLAGS)
             inputs, results = scratch/'input', scratch/'result'
@@ -216,7 +253,8 @@ def enhance(job, emit):
                 raise RuntimeError('Enhanced video encoding failed: '+encode_log.read()[-600:])
         partial.rename(output)
         emit('enhance_preview' if preview else 'enhance_exported', output=str(output), start=start,
-             length=min(length,count/float(Fraction(fps))), width=width*2,height=height*2,frames=count)
+             length=min(length,count/float(Fraction(fps))), width=width*2,height=height*2,frames=count,
+             encoder=encoder, audio=encoding['audio'])
     finally:
         for process in (decoder,writer):
             if process is not None:
