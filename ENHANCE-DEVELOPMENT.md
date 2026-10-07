@@ -6,17 +6,20 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 
 1. Add a video through File or the shared queue.
 2. Choose an AI backend. Automatic uses the installed NVIDIA CUDA runtime for
-   live action; animation and other GPUs use Vulkan. Vulkan setup downloads a
+   animation and live action; other GPUs use Vulkan. Vulkan setup downloads a
    verified 43 MiB archive. CUDA downloads only the selected model on first use:
-   about 9.3 MiB for Balanced or 64 MiB for each Detail model. Verified files are
+   about 2.4 MiB for Animation, 9.3 MiB for Balanced, or 64 MiB for each Detail model. Verified files are
    reused. No separate CUDA toolkit is required.
 3. Choose Animation or Live action and an **Output resolution**, then a preview
    start and 2–10 second length. The header shows source → output dimensions.
-4. Generate a preview. Play and seek the Original/Enhanced panels together.
-   Only the original panel plays audio.
+4. Generate a preview. Play, pause, resume, or seek the Original/Enhanced panels
+   together. The compact seek bar shows current time and duration; the result
+   heading shows the source time range. Only the original panel plays audio.
 5. Choose the video codec, encoder, and file format, then export a new file.
    Audio defaults to copying every original track without re-encoding. Choose
    MKV for incompatible source audio, or AAC to make an MP4-compatible copy.
+   Completed exports replace the short preview in the comparison player, so the
+   full result can be reviewed against the original without reopening it.
 
 ## Encoding controls
 
@@ -39,7 +42,9 @@ stretching, or letterboxing is added; dimensions round to even pixels for video
 encoding. For example, 4:3 footage at 1080p becomes 1440×1080, while a portrait
 9:16 video becomes 1080×1920. A smaller target downscales, as stated in the UI.
 
-Animation automatically chooses the smallest sufficient 2×, 3×, or 4× AI model.
+Vulkan animation chooses the smallest sufficient 2×, 3×, or 4× AI model. CUDA
+animation uses the official lightweight 4× anime-video model, then resizes to
+the requested target. It stays resident across frames just like CUDA live action.
 CUDA live action offers Balanced, a lightweight 4× general-video model with
 moderate denoising, and Detail, a heavier native 2× model for targets up to 2× or
 4× for larger targets. Balanced can smooth more texture; compare a short preview
@@ -69,7 +74,8 @@ selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 ## Implemented
 
 - Real-ESRGAN ncnn Vulkan on NVIDIA/AMD graphics, with automatic or explicit GPU
-  index selection (these indices need not match the speech engine).
+  selection by detected device name. CUDA and Vulkan enumerate their own cards
+  so selections use the correct backend IDs; unavailable devices are not listed.
 - Native 2×/3×/4× animation models and a 4× live-action model, with aspect-aware
   final resizing to the selected output dimensions.
 - Codec-aware automatic and explicit NVIDIA/AMD/Intel/CPU encoding, with quality,
@@ -98,13 +104,13 @@ Side-by-side previews synchronize to the original player with drift correction;
 they are not a frame-locked scientific comparison.
 
 Resume after cancellation, selective Vulkan model downloads,
-GPU names from this backend, persisted enhancement preferences, automatic
+Persisted enhancement preferences, automatic
 cross-workspace export composition, and wider hardware/quality validation remain
 future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-78 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+80 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -125,6 +131,13 @@ outputs retained all 60 frames, the original frame rate, and identical audio
 packet hashes. Quality checks compared tiled/full-frame results and both
 profiles on the publisher's sample image. GUI checks verify live ETA, elapsed
 time, fractional progress, finalization, and cancellation cleanup.
+
+A ten-second synthetic clip also verifies CUDA animation export and a preview
+starting two seconds into the source. Player checks cover pause/resume without
+rewinding on repeated LoadedMedia events, offset seeking, restart after the end,
+automatic full-export comparison, named CUDA/Vulkan devices, and 1280–1920 pixel
+layouts. CUDA animation is native 4× with final resizing; the Vulkan animation
+path retains its scale-specific models.
 
 Resolution checks cover landscape, portrait, 4:3, square, ultrawide, even-pixel
 rounding, downscaling, model selection, and size limits. Real animation exports

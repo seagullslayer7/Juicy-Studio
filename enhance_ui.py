@@ -11,6 +11,23 @@ from video_encoding import CODECS, ENCODER_LABELS
 from enhance_resolution import TARGETS, output_size, model_scale
 
 
+def playback_time(milliseconds):
+    seconds, ms = divmod(max(0,round(milliseconds)),1000)
+    minutes, seconds = divmod(seconds,60)
+    hours, minutes = divmod(minutes,60)
+    return f'{hours:02}:{minutes:02}:{seconds:02}.{ms:03}'
+
+
+class ComparisonSeek(QSlider):
+    """Click anywhere to seek, retaining native keyboard and handle dragging."""
+    def mousePressEvent(self,event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            value = QStyle.sliderValueFromPosition(self.minimum(),self.maximum(),
+                max(0,min(self.width()-10,round(event.position().x())-5)),max(1,self.width()-10))
+            self.setValue(value); self.sliderMoved.emit(value)
+        super().mousePressEvent(event)
+
+
 class EnhanceWorkspace(QWidget):
     job_requested = Signal(dict)
 
@@ -24,6 +41,8 @@ class EnhanceWorkspace(QWidget):
         self.preview_length = 0
         self.busy = False
         self.preview_settings = None
+        self.preview_pending = False
+        self.cuda_devices, self.vulkan_devices = [], []
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.setSpacing(12)
         heading = QHBoxLayout()
         title = QLabel('Enhance'); title.setObjectName('sectionTitle'); heading.addWidget(title)
@@ -36,15 +55,14 @@ class EnhanceWorkspace(QWidget):
         settings_box = QVBoxLayout(self.settings_panel); settings_box.setContentsMargins(12,8,12,8)
         self.settings_tabs = QTabWidget(); settings_box.addWidget(self.settings_tabs)
         self.model = Combo(); self.model.addItem('Animation','animation'); self.model.addItem('Live action','live')
-        self.model.setToolTip('Live action can use persistent NVIDIA CUDA processing. Animation uses its native Vulkan models. Preview both options on your footage before exporting.')
+        self.model.setToolTip('Choose an animation-video model or live-action restoration. Both support NVIDIA CUDA and Vulkan. Compare a short preview before exporting.')
         self.backend = Combo()
         for label,value in [('Automatic','auto'),('NVIDIA CUDA','cuda'),('Vulkan · NVIDIA / AMD','vulkan')]: self.backend.addItem(label,value)
-        self.backend.setToolTip('Automatic uses CUDA for live action when an NVIDIA runtime is ready; otherwise Vulkan. Animation uses Vulkan. CUDA keeps the model in GPU memory across frames. Video encoding is a separate setting.')
+        self.backend.setToolTip('Automatic uses CUDA when an NVIDIA runtime is ready; otherwise Vulkan. CUDA keeps animation or live-action models in GPU memory across frames. Video encoding is a separate setting.')
         self.restoration = Combo(); self.restoration.addItem('Balanced · faster','balanced'); self.restoration.addItem('Detail · slower','detail')
         self.restoration.setToolTip('CUDA live action: Balanced uses a lightweight general-video model with moderate denoising. Detail uses a heavier native 2× model for targets up to 2×, or 4× for larger targets. These produce different results; compare a preview. Vulkan live action uses the legacy Detail model.')
         self.gpu = Combo(); self.gpu.addItem('Automatic','auto')
-        for index in range(4): self.gpu.addItem(f'GPU {index}',str(index))
-        self.gpu.setToolTip('Device index within the selected AI backend. CUDA and Vulkan numbering can differ. Automatic chooses the default device. Switching backend resets this choice.')
+        self.gpu.setToolTip('Detected graphics cards for the selected AI backend. Automatic chooses the default device. Switching backend resets the selection. Vulkan cards appear after the enhancement engine is installed.')
         self.codec = Combo()
         for value,(label,_) in CODECS.items(): self.codec.addItem(label,value)
         self.codec.setToolTip('H.264 has broad playback support. HEVC and AV1 can reduce file size but require compatible players. Output remains 8-bit SDR.')
@@ -101,8 +119,15 @@ class EnhanceWorkspace(QWidget):
         self.play_button = action('',self.toggle_play,'Play or pause the preview')
         self.play_button.setAccessibleName('Play or pause comparison')
         self.play_button.setIcon(host.media_icon(QStyle.StandardPixmap.SP_MediaPlay)); controls.addWidget(self.play_button)
-        self.seek = QSlider(Qt.Orientation.Horizontal); self.seek.setToolTip('Seek both panels to the same moment')
-        self.seek.sliderMoved.connect(self.seek_to); controls.addWidget(self.seek,1)
+        self.time_label = QLabel('00:00:00.000 / 00:00:00.000'); self.time_label.setObjectName('muted')
+        self.time_label.setToolTip('Current position / duration within the comparison; the source range is shown above the video.')
+        controls.addWidget(self.time_label)
+        self.seek = ComparisonSeek(Qt.Orientation.Horizontal); self.seek.setObjectName('enhanceSeek'); self.seek.setFixedHeight(22)
+        self.seek.setToolTip('Click or drag to seek both panels; arrow keys fine-tune the position')
+        self.seek.setSingleStep(100); self.seek.setPageStep(1000)
+        self.seek.sliderMoved.connect(self.seek_to)
+        self.seek.actionTriggered.connect(lambda _: QTimer.singleShot(0,lambda:self.seek_to(self.seek.value())))
+        controls.addWidget(self.seek,1)
         self.mute = action('Sound on',self.toggle_mute,'Toggle original audio; enhanced preview never plays duplicate audio')
         controls.addWidget(self.mute); layout.addLayout(controls)
         footer = QHBoxLayout(); footer.setSpacing(12)
@@ -145,10 +170,7 @@ class EnhanceWorkspace(QWidget):
         self.encoder.blockSignals(False)
 
     def settings_changed(self,control=None):
-        if control is self.backend: self.gpu.setCurrentIndex(0)
-        if control is self.model and self.model.currentData() == 'animation' and self.backend.currentData() == 'cuda':
-            self.backend.setCurrentIndex(0)
-        self.restoration.setEnabled(self.uses_cuda())
+        if control is self.backend: self.populate_gpus(reset=True)
         if control is self.codec: self.populate_encoders()
         if control is self.audio_encoder and self.audio_encoder.currentData() in ('libopus','flac'):
             self.container.setCurrentIndex(self.container.findData('mkv'))
@@ -161,8 +183,20 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(self.busy)
 
     def uses_cuda(self):
-        return self.model.currentData() == 'live' and (self.backend.currentData() == 'cuda' or
+        return (self.backend.currentData() == 'cuda' or
             (self.backend.currentData() == 'auto' and getattr(self.host,'cuda_available',False)))
+
+    def populate_gpus(self,reset=False):
+        previous = 'auto' if reset else self.gpu.currentData()
+        devices = self.cuda_devices if self.uses_cuda() else self.vulkan_devices
+        self.gpu.blockSignals(True); self.gpu.clear(); self.gpu.addItem('Automatic','auto')
+        names = [device['name'] for device in devices]
+        for device in devices:
+            name = device['name']
+            if names.count(name) > 1: name += f" · device {int(device['id'])+1}"
+            self.gpu.addItem(name,str(device['id']))
+        self.gpu.setCurrentIndex(max(0,self.gpu.findData(previous))); self.gpu.blockSignals(False)
+        self.update_output_summary()
 
     def installed(self):
         if self.uses_cuda(): return True  # Verified CUDA model weights download on first use.
@@ -210,8 +244,11 @@ class EnhanceWorkspace(QWidget):
         self.summary.setText(f'{width} × {height} → {output[0]} × {output[1]}')
         scale = model_scale(self.model.currentData(),width,height,output)
         if self.uses_cuda():
-            if self.restoration.currentData() == 'detail' and max(output[0]/width,output[1]/height) <= 2: scale=2
-            profile = 'Balanced' if self.restoration.currentData() == 'balanced' else 'Detail'
+            scale = 4
+            if self.model.currentData() == 'animation': profile = 'Animation video'
+            else:
+                if self.restoration.currentData() == 'detail' and max(output[0]/width,output[1]/height) <= 2: scale=2
+                profile = 'Balanced' if self.restoration.currentData() == 'balanced' else 'Detail'
             self.hint.setText(f'CUDA · {profile} · native {scale}× AI, resized to target · first use downloads verified model weights. Preview to compare detail and texture.')
             return
         ratio = max(output[0]/width,output[1]/height)
@@ -219,14 +256,17 @@ class EnhanceWorkspace(QWidget):
         self.hint.setText(f'{scale}× AI model · {detail} 8-bit SDR; variable frame rates become constant.')
 
     def invalidate_preview(self,*args):
+        self.preview_pending = False
         self.pause(); self.preview_path = None; self.enhanced.setSource(QUrl())
         self.result_label.setText('Enhanced · generate a preview')
         self.seek.setRange(0,self.original.duration())
+        self.update_time()
         self.update_output_summary()
 
     def duration_changed(self,duration):
         if not self.preview_path: self.seek.setRange(0,duration)
         self.start.setMaximum(max(0,duration/1000-.05))
+        self.update_time()
 
     def use_playhead(self): self.start.setValue(self.original.position()/1000)
 
@@ -255,29 +295,45 @@ class EnhanceWorkspace(QWidget):
             partial_token=uuid4().hex,settings=self.settings()))
 
     def receive(self,data):
-        if data['type'] == 'enhance_installed':
+        if data['type'] == 'enhance_devices':
+            self.vulkan_devices = data['vulkan']; self.populate_gpus()
+        elif data['type'] == 'enhance_installed':
             self.host.set_status('Enhancement engine and models installed. Generate a short preview to begin.')
-        elif data['type'] == 'enhance_preview':
+        elif data['type'] in ('enhance_preview','enhance_exported'):
             self.pause(); self.preview_path = data['output']; self.preview_start = data['start']; self.preview_length = data['length']
+            self.preview_pending = True
             self.enhanced.setSource(QUrl.fromLocalFile(self.preview_path))
             self.seek.setRange(0,round(self.preview_length*1000)); self.seek.setValue(0)
             self.original.setPosition(round(self.preview_start*1000))
-            self.result_label.setText(f"Enhanced · {data['width']} × {data['height']}")
+            label = 'Export' if data['type'] == 'enhance_exported' else 'Preview'
+            self.result_label.setText(f"{label} · {data['width']} × {data['height']} · {playback_time(self.preview_start*1000)} – {playback_time((self.preview_start+self.preview_length)*1000)}")
+            self.update_time()
             self.host.set_status('Preview ready. Play both panels to compare the same section.')
-        elif data['type'] == 'enhance_exported':
+        if data['type'] == 'enhance_exported':
             self.host.last_output = data['output']; self.host.open_result_btn.setEnabled(True)
             audio = 'Original audio copied without re-encoding.' if data.get('audio','copy') == 'copy' else 'Audio encoded as '+data['audio'].replace('libopus','Opus').upper()+'.'
-            self.host.set_status('Enhanced video exported. '+audio)
+            self.host.set_status('Export ready in the comparison player. '+audio)
 
     def ready_preview(self,status):
-        if self.preview_path and status == QMediaPlayer.MediaStatus.LoadedMedia: self.seek_to(0)
+        # Qt can emit LoadedMedia again on pause/end. Initialize each source once.
+        if self.preview_path and self.preview_pending and status in (QMediaPlayer.MediaStatus.LoadedMedia,QMediaPlayer.MediaStatus.BufferedMedia):
+            self.preview_pending = False
+            self.seek_to(0)
 
     def seek_to(self,value):
+        value = max(self.seek.minimum(),min(self.seek.maximum(),value))
         self.original.setPosition(value+(round(self.preview_start*1000) if self.preview_path else 0))
         if self.preview_path: self.enhanced.setPosition(value)
+        self.update_time(value)
+
+    def update_time(self,value=None):
+        if value is None: value = self.original.position()-(round(self.preview_start*1000) if self.preview_path else 0)
+        duration = round(self.preview_length*1000) if self.preview_path else self.original.duration()
+        self.time_label.setText(f'{playback_time(min(max(0,value),duration))} / {playback_time(duration)}')
 
     def position_changed(self,position):
         if not self.seek.isSliderDown(): self.seek.setValue(max(0,position-(round(self.preview_start*1000) if self.preview_path else 0)))
+        self.update_time()
 
     def toggle_play(self):
         if self.original.playbackState() == QMediaPlayer.PlaybackState.PlayingState: self.pause()
@@ -286,6 +342,7 @@ class EnhanceWorkspace(QWidget):
                 relative = self.original.position()-round(self.preview_start*1000)
                 if relative < 0 or relative >= self.preview_length*1000-50: self.seek_to(0)
                 self.enhanced.play()
+            elif self.original.mediaStatus() == QMediaPlayer.MediaStatus.EndOfMedia: self.seek_to(0)
             self.original.play()
 
     def play_state_changed(self,state):
@@ -309,7 +366,12 @@ class EnhanceWorkspace(QWidget):
 
     def set_busy(self,busy):
         self.busy = busy; available = bool(self.video_path) and not busy
-        self.restoration.setEnabled(self.uses_cuda())
+        animation = self.model.currentData() == 'animation'
+        self.restoration.blockSignals(True)
+        if animation or not self.uses_cuda(): self.restoration.setCurrentIndex(0)
+        self.restoration.setItemText(0,'Animation · video model' if animation else 'Balanced · faster' if self.uses_cuda() else 'Detail · Vulkan model')
+        self.restoration.blockSignals(False)
+        self.restoration.setEnabled(self.uses_cuda() and not animation)
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

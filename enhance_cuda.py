@@ -5,6 +5,7 @@ import urllib.request
 from uuid import uuid4
 
 WEIGHTS = {
+    'realesr-animevideov3.pth': ('v0.2.5.0', 2504012, 'b8a8376811077954d82ca3fcf476f1ac3da3e8a68a4f4d71363008000a18b75d'),
     'realesr-general-x4v3.pth': ('v0.2.5.0', 4885111, '8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292'),
     'realesr-general-wdn-x4v3.pth': ('v0.2.5.0', 4885111, '1641f8c4464b9f097c9fdda5589273713f67cf59f3d909e0bd688f0cee269dca'),
     'RealESRGAN_x2plus.pth': ('v0.2.1', 67061725, '49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb'),
@@ -12,7 +13,8 @@ WEIGHTS = {
 }
 
 
-def model_choice(profile, width, height, output):
+def model_choice(profile, width, height, output, content='live'):
+    if content == 'animation': return 4, ('realesr-animevideov3.pth',)
     if profile == 'balanced':
         return 4, ('realesr-general-x4v3.pth', 'realesr-general-wdn-x4v3.pth')
     if profile != 'detail': raise ValueError('Choose Balanced or Detail restoration.')
@@ -49,7 +51,7 @@ def ensure_weights(folder, names, emit):
 
 
 class CudaEnhancer:
-    def __init__(self, root, profile, width, height, output, gpu, emit):
+    def __init__(self, root, profile, width, height, output, gpu, emit, content='live'):
         import torch
         from enhance_networks import SRVGGNetCompact, RRDBNet
         if not torch.cuda.is_available(): raise ValueError('NVIDIA CUDA is unavailable. Install the NVIDIA runtime or choose Vulkan.')
@@ -58,12 +60,13 @@ class CudaEnhancer:
         self.torch = torch
         self.device = torch.device('cuda', index)
         self.width, self.height, self.output = width, height, output
-        self.scale, names = model_choice(profile, width, height, output)
+        self.scale, names = model_choice(profile, width, height, output, content)
         self.profile = profile
         folder = Path(root)/'tools/enhance/torch-models'
         ensure_weights(folder, names, emit)
         emit('stage', message=f'Loading {profile} AI model · {torch.cuda.get_device_name(index)}', phase='load', percent=0)
-        net = SRVGGNetCompact(num_conv=32, upscale=4) if profile == 'balanced' else RRDBNet(3,3,scale=self.scale)
+        net = (SRVGGNetCompact(num_conv=16, upscale=4) if content == 'animation' else
+               SRVGGNetCompact(num_conv=32, upscale=4) if profile == 'balanced' else RRDBNet(3,3,scale=self.scale))
         states = []
         for name in names:
             checkpoint = torch.load(folder/name, map_location='cpu', weights_only=True)
@@ -74,8 +77,8 @@ class CudaEnhancer:
         self.net = net.eval().requires_grad_(False).to(device=self.device, dtype=torch.float16, memory_format=torch.channels_last)
         free, _ = torch.cuda.mem_get_info(self.device)
         self.tile = 0 if width*height <= 1280*720 and free >= 6*1024**3 else 512
-        self.pad = 40 if profile == 'balanced' else 64
-        self.name = f'CUDA · {torch.cuda.get_device_name(index)} · {profile} · native {self.scale}×'
+        self.pad = 40 if profile == 'balanced' or content == 'animation' else 64
+        self.name = f'CUDA · {torch.cuda.get_device_name(index)} · {"animation" if content == "animation" else profile} · native {self.scale}×'
 
     def _infer(self, tensor):
         torch = self.torch

@@ -176,11 +176,29 @@ def read_frame(stream, size):
     return b''.join(parts)
 
 
+def parse_vulkan_devices(text):
+    devices = {}
+    for match in re.finditer(r'^\[(\d+) (.+?)\]\s+queueC=', text, re.MULTILINE):
+        devices[match[1]] = {'id':match[1], 'name':match[2].strip()}
+    return list(devices.values())
+
+
+def enhancement_vulkan_devices():
+    executable = runtime_folder()/'realesrgan-ncnn-vulkan.exe'
+    if not executable.is_file(): return []
+    # ncnn prints its own device IDs before attempting to decode. An absent
+    # UUID-named input probes enumeration without processing or writing media.
+    absent = runtime_folder()/('device-probe-'+uuid4().hex+'.png')
+    try:
+        result = subprocess.run([str(executable),'-i',str(absent),'-o',str(absent.with_suffix('.out.png'))],
+            cwd=runtime_folder(),capture_output=True,text=True,encoding='utf-8',errors='replace',
+            timeout=15,creationflags=FLAGS)
+        return parse_vulkan_devices(result.stderr+result.stdout)
+    except (OSError,subprocess.TimeoutExpired): return []
+
+
 def select_backend(settings):
     requested = settings.get('backend','auto')
-    if settings.get('model','animation') == 'animation':
-        if requested == 'cuda': raise ValueError('Animation currently uses Vulkan. Choose Automatic or Vulkan.')
-        return 'vulkan'
     if requested == 'vulkan': return 'vulkan'
     try:
         import torch
@@ -249,7 +267,7 @@ def enhance(job, emit):
         enhancer = None
         if backend == 'cuda':
             from enhance_cuda import CudaEnhancer
-            enhancer = CudaEnhancer(ROOT,job.get('settings',{}).get('restoration','balanced'),width,height,dimensions,gpu,emit)
+            enhancer = CudaEnhancer(ROOT,job.get('settings',{}).get('restoration','balanced'),width,height,dimensions,gpu,emit,content=model)
             engine_label = enhancer.name
         else:
             engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
@@ -341,6 +359,8 @@ def enhance(job, emit):
 def run_enhance_job(job, emit):
     from runtime_paths import configure_runtime
     configure_runtime()
-    if job['action'] == 'enhance_install': install_runtime(emit)
+    if job['action'] == 'enhance_install':
+        install_runtime(emit)
+        emit('enhance_devices',vulkan=enhancement_vulkan_devices())
     elif job['action'] in ('enhance_preview','enhance_export'): enhance(job,emit)
     else: raise ValueError('Unknown enhancement action.')

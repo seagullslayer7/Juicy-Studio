@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 from test_enhance import scratch
 import enhance_cuda as cuda
-from enhance_worker import FrameProgress, select_backend, validate_settings
+from enhance_worker import FrameProgress, select_backend, validate_settings, parse_vulkan_devices
 
 
 class EnhancementSpeedTests(unittest.TestCase):
@@ -17,11 +17,21 @@ class EnhancementSpeedTests(unittest.TestCase):
     def test_invalid_backend_and_restoration_rejected(self):
         for settings in ({'backend':'unknown'},{'restoration':'unknown'}):
             with self.assertRaises(ValueError):validate_settings(settings)
-        with self.assertRaises(ValueError):select_backend({'model':'animation','backend':'cuda'})
 
     def test_vulkan_selection_does_not_require_cuda(self):
         self.assertEqual(select_backend({'model':'live','backend':'vulkan'}),'vulkan')
-        self.assertEqual(select_backend({'model':'animation'}),'vulkan')
+        self.assertEqual(select_backend({'model':'animation','backend':'vulkan'}),'vulkan')
+
+    def test_animation_has_its_own_cuda_model(self):
+        scale,names=cuda.model_choice('balanced',640,360,(1280,720),'animation')
+        self.assertEqual(scale,4)
+        self.assertEqual(names,('realesr-animevideov3.pth',))
+        with patch.dict('sys.modules',{'torch':type('Torch',(),{'cuda':type('Cuda',(),{'is_available':staticmethod(lambda:True)})})}):
+            self.assertEqual(select_backend({'model':'animation','backend':'auto'}),'cuda')
+
+    def test_device_names_keep_engine_ids(self):
+        text='[0 NVIDIA GeForce RTX 5060 Ti]  queueC=2[8]\n[0 NVIDIA GeForce RTX 5060 Ti] fp16=1\n[2 AMD Radeon RX 9060 XT]  queueC=1[4]\n'
+        self.assertEqual(parse_vulkan_devices(text),[dict(id='0',name='NVIDIA GeForce RTX 5060 Ti'),dict(id='2',name='AMD Radeon RX 9060 XT')])
 
     def test_eta_available_below_one_percent_and_excludes_loading(self):
         now=[100.];progress=FrameProgress(87000,lambda:now[0])

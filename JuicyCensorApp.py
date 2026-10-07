@@ -391,6 +391,9 @@ QSlider#waveformGain::sub-page:horizontal { border-radius: 2px; }
 QSlider#waveformGain::handle:horizontal { width: 10px; margin: -4px 0; border-radius: 6px; }
 QSlider#waveformGain::handle:horizontal:hover { background: #ffd18a; border-color: #ffc563; }
 QSlider#waveformGain::handle:horizontal:pressed { background: #ffb647; }
+QSlider#enhanceSeek::groove:horizontal { height: 4px; border-radius: 2px; }
+QSlider#enhanceSeek::sub-page:horizontal { border-radius: 2px; }
+QSlider#enhanceSeek::handle:horizontal { width: 10px; height: 10px; margin: -3px 0; border-radius: 5px; }
 QPushButton { background: #353a27; border: 1px solid #51563a; border-radius: 7px; padding: 9px 14px; font-weight: 600; }
 QPushButton:focus { border: 1px solid #ffb94f; }
 QToolTip { background: #2d3021; color: #fff4dc; border: 1px solid #64502d; padding: 6px; }
@@ -1684,6 +1687,9 @@ class MainWindow(QMainWindow):
             self.set_status('Censored preview ready. Click Censored audio to switch back to the original.')
         elif kind == 'hardware':
             self.cuda_available = data.get('cuda', False)
+            self.enhance.cuda_devices = data.get('cuda_devices',[])
+            self.enhance.vulkan_devices = data.get('enhance_vulkan',[])
+            self.enhance.populate_gpus()
             self.devices = data['vulkan']
             self.hardware.setText('Ready')
             self.hardware.setToolTip('Choose your graphics card in Settings.')

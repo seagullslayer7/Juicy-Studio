@@ -64,7 +64,7 @@ compatible. Full notices are in `licenses/Real-ESRGAN-LICENSE.txt` and
 https://github.com/xinntao/Real-ESRGAN and https://github.com/XPixelGroup/BasicSR .
 
 Optional CUDA weights download directly from the official Real-ESRGAN releases
-(v0.2.5.0 general/weak-denoise, v0.2.1 x2plus, v0.1.0 x4plus). Exact filenames,
+(v0.2.5.0 animevideov3/general/weak-denoise, v0.2.1 x2plus, v0.1.0 x4plus). Exact filenames,
 sizes, and SHA-256 digests are pinned in `enhance_cuda.py`. Weights are verified
 before loading and are not bundled in release installers. CUDA processing uses
 the existing private PyTorch environment and its retained license notices.

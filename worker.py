@@ -86,8 +86,11 @@ def run_job(job: dict):
         return
     if action == 'probe':
         import torch
+        from enhance_worker import enhancement_vulkan_devices
         emit('hardware', cuda=torch.cuda.is_available(),
              cuda_name=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+             cuda_devices=[dict(id=str(i),name=torch.cuda.get_device_name(i)) for i in range(torch.cuda.device_count())],
+             enhance_vulkan=enhancement_vulkan_devices(),
              vulkan=vulkan_devices())
         return
     video = Path(job['video']).resolve()
