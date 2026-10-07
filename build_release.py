@@ -15,7 +15,7 @@ PAYLOAD_FILES = ['JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcripti
     'install_runtime.py', 'model_download.py', 'config.json', 'banned_words.txt',
     'banned_phrases.txt', 'beep.mp3', 'release-manifest.json', 'requirements-cpu.lock',
     'requirements-cuda.lock', 'LICENSE', 'README.md', 'THIRD-PARTY.md', 'VALIDATION.md',
-    'BUILDING.md', 'RELEASE-NOTES.md', 'ENHANCE-DEVELOPMENT.md']
+    'BUILDING.md', 'RELEASE-NOTES.md', 'ENHANCE-DEVELOPMENT.md', 'EDITOR-ROADMAP.md']
 PAYLOAD_DIRS = ['assets', 'licenses', 'vendor_wheels', 'bootstrap-tools']
 SOURCE_EXTRA = ['JuicyCensor.spec', 'build_release.py', 'requirements-ui.txt',
     'requirements-dev.txt', 'requirements-runtime.in', 'requirements-cpu.in',

@@ -21,7 +21,10 @@ version_info = VSVersionInfo(
 )
 a = Analysis([str(root / 'JuicyCensorApp.py')], pathex=[str(root / 'vendor')],
              binaries=[], datas=[], hiddenimports=[], hookspath=[], runtime_hooks=[],
-             excludes=[], noarchive=False)
+             # Processing libraries belong to the private worker environment,
+             # never to the desktop executable (even when present on the builder).
+             excludes=['torch', 'torchaudio', 'whisperx', 'faster_whisper',
+                       'ctranslate2', 'transformers', 'scipy', 'numpy'], noarchive=False)
 # Qt uses the unversioned ICU API supplied by Windows 10/11. A third-party
 # icuuc.dll on PATH (for example Poppler's versioned ICU) is incompatible.
 a.binaries = [entry for entry in a.binaries

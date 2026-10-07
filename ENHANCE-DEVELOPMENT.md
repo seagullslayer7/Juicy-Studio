@@ -1,6 +1,7 @@
-# Enhance · 3.1 development preview
+# Juicy Studio · Enhance development preview
 
-This branch adds a working enhancement prototype. The published 3.0 release is
+This branch adds a working enhancement prototype and the Juicy Studio preview
+branding. The published JuicyCensor 3.0 release is
 unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 
 1. Add a video through File or the shared queue.
@@ -46,11 +47,17 @@ future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-56 automated regression/boundary tests pass. A real six-frame synthetic clip was
+57 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
 paired seeking/playback, model changes, queue removal, and workspace switching.
 These short tests establish functionality, not long-video quality or performance.
+
+The native preview executable was also launched on the Windows desktop and
+completed a six-frame 2× enhancement with NVENC encoding. Its writable working
+files are staged separately from the source checkout. A blocked job-file write
+now leaves the window open with an explanation instead of crashing at startup;
+the test suite covers that failure path, and the native UI checks cover retry.
 
 Backend: https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan

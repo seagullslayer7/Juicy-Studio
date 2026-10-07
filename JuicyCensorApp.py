@@ -31,6 +31,7 @@ from ui_icons import decorate_text, decorate, tool_icon
 from appearance import color as theme_color, apply_theme, load_preferences, AppearanceDialog
 
 VERSION = json.loads((ROOT / 'release-manifest.json').read_text(encoding='utf-8'))['version']
+PRODUCT_NAME = 'Juicy Studio'
 from languages import LANGUAGES, MODELS
 EXTENSIONS = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v'}
 
@@ -160,7 +161,7 @@ class Settings(QDialog):
     download_requested = Signal(str)
     def __init__(self, parent, config, devices):
         super().__init__(parent)
-        self.setWindowTitle('JuicyCensor settings')
+        self.setWindowTitle(f'{PRODUCT_NAME} settings')
         self.setMinimumSize(660, 710)
         self.config = dict(config)
         layout = QVBoxLayout(self)
@@ -528,7 +529,7 @@ class OrangeMark(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f'JuicyCensor · {VERSION}')
+        self.setWindowTitle(f'{PRODUCT_NAME} · {VERSION}')
         self.resize(1500, 960)
         self.setMinimumSize(1280, 720)
         self.setAcceptDrops(True)
@@ -599,9 +600,9 @@ class MainWindow(QMainWindow):
         orange = QLabel()
         orange.setPixmap(QIcon(str(ROOT/'assets/orange.ico')).pixmap(26, 26))
         command_row.addWidget(orange)
-        brand = QLabel('JuicyCensor')
+        brand = QLabel(PRODUCT_NAME)
         brand.setObjectName('appName')
-        brand.setToolTip(f'JuicyCensor {VERSION} · Local by default')
+        brand.setToolTip(f'{PRODUCT_NAME} {VERSION} · Local by default')
         command_row.addWidget(brand)
         self.command_menu = QMenuBar()
         self.command_menu.setNativeMenuBar(False)
@@ -1000,7 +1001,7 @@ class MainWindow(QMainWindow):
         self.runtime_button.setToolTip('Install, repair, or switch the CPU/AMD and NVIDIA environments')
         help_menu = self.command_menu.addMenu('&Help')
         add(help_menu, 'User guide', lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT/'README.md'))))
-        add(help_menu, 'About JuicyCensor', lambda: QMessageBox.about(self, 'About JuicyCensor', f'JuicyCensor {VERSION}\n\nFilter the Juice.\nCensor, subtitle, and translate with local processing.'))
+        add(help_menu, f'About {PRODUCT_NAME}', lambda: QMessageBox.about(self, f'About {PRODUCT_NAME}', f'{PRODUCT_NAME} {VERSION}\n\nFilter the Juice.\nCensor, subtitle, translate, and enhance with local processing.\n\nVideo editor development preview.'))
         for menu in (file_menu, edit_menu, view_menu, settings_menu):
             menu.aboutToShow.connect(self.sync_menu_actions)
 
@@ -1569,14 +1570,24 @@ class MainWindow(QMainWindow):
             self.set_status('Python environment missing. Open Runtime setup to finish installation.')
             return
         path = ROOT / 'cache' / 'jobs' / f'{uuid4().hex}.json'
-        write_json(path, job)
+        log_path = ROOT / 'logs' / 'last-job.log'
+        try:
+            write_json(path, job)
+            log_path.parent.mkdir(exist_ok=True)
+            log = log_path.open('w', encoding='utf-8')
+        except OSError as exc:
+            for leftover in (path,path.with_name(path.name+'.tmp')):
+                try: leftover.unlink(missing_ok=True)
+                except OSError: pass
+            self.worker_error = f'Cannot write working files in {ROOT}. Use a writable app folder or check Windows folder permissions. {exc}'
+            self.hardware.setText('Needs attention')
+            self.set_status(self.worker_error)
+            return
         self.cancel_mark()
         self.job, self.job_path = job, path
         self.cancelled, self.received_result, self.buffer = False, False, ''
         self.worker_error = None
-        log_path = ROOT / 'logs' / 'last-job.log'
-        log_path.parent.mkdir(exist_ok=True)
-        self.log = log_path.open('w', encoding='utf-8')
+        self.log = log
         environment = os.environ.copy()
         environment['PYTHONIOENCODING'] = 'utf-8'
         environment['PYTHONDONTWRITEBYTECODE'] = '1'
@@ -1684,7 +1695,7 @@ class MainWindow(QMainWindow):
         self.process = None
         self.job_path.unlink(missing_ok=True)
         if self.job.get('action') in ('enhance_preview','enhance_export'):
-            from enhance_worker import safe_remove
+            import shutil
             token = self.job.get('partial_token', '')
             if re.fullmatch('[0-9a-f]{32}', token):
                 target = Path(self.job['output']).resolve()
@@ -1692,7 +1703,8 @@ class MainWindow(QMainWindow):
                 folder = ROOT/'cache'/'enhance-jobs'/token
                 try:
                     partial.unlink(missing_ok=True)
-                    if folder.exists(): safe_remove(folder,folder.parent)
+                    if folder.exists() and not folder.is_symlink() and folder.resolve().parent == (ROOT/'cache'/'enhance-jobs').resolve():
+                        shutil.rmtree(folder)
                 except OSError:
                     pass
         if self.job.get('action') == 'subtitle_export' and re.fullmatch(r'[0-9a-f]{32}', self.job.get('partial_token', '')):
@@ -1737,7 +1749,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if self.process:
-            answer = QMessageBox.question(self, 'Processing is running', 'Cancel processing and close JuicyCensor?')
+            answer = QMessageBox.question(self, 'Processing is running', f'Cancel processing and close {PRODUCT_NAME}?')
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
@@ -1774,7 +1786,7 @@ def main():
                 return 1
         return 0
     app = QApplication(sys.argv)
-    app.setApplicationName('JuicyCensor')
+    app.setApplicationName(PRODUCT_NAME)
     app.setWindowIcon(QIcon(str(ROOT / 'assets' / 'orange.ico')))
     if sys.platform == 'win32':
         import ctypes

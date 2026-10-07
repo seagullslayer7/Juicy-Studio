@@ -1,6 +1,8 @@
-> **3.1 development branch:** An experimental Enhance workspace adds local 2× AI
+> **Juicy Studio · 3.1 development preview:** JuicyCensor is growing toward a
+> focused video editor. An experimental Enhance workspace adds local 2× AI
 > upscaling and comparison previews. See [setup, features, and limits](ENHANCE-DEVELOPMENT.md).
 > The downloads below remain the stable 3.0 release.
+> See the [editor roadmap](EDITOR-ROADMAP.md) for the planned project and timeline workflow.
 
 <p align="center"><img src="assets/readme-banner.svg" alt="JuicyCensor 3.0 — Filter the Juice" width="900"></p>
 
