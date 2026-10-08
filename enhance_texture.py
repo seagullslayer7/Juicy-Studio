@@ -39,6 +39,28 @@ def recover_source_texture(result,source,amount):
     return recover_texture(result,source,amount,radius=max(.8,min(4.,ratio*.8)))
 
 
+def source_guided_detail(result,source):
+    """Keep source geometry/colors; admit only bounded, aligned AI fine detail.
+
+    No semantic/anatomical claims: every RGB pixel stays within six levels of
+    the bicubic source before encoding. Flat areas and conflicting edges retain
+    the source, sacrificing reconstruction in exchange for greater fidelity.
+    """
+    from scipy.ndimage import gaussian_filter
+    original=np.asarray(source.resize(result.size,Image.Resampling.BICUBIC),dtype=np.float32)
+    enhanced=np.asarray(result,dtype=np.float32)
+    weights=np.array([.2126,.7152,.0722],np.float32)
+    radius=max(.8,min(4.,max(result.width/source.width,result.height/source.height)*.6))
+    src=original@weights;dst=enhanced@weights
+    src_low=gaussian_filter(src,radius);dst_low=gaussian_filter(dst,radius)
+    src_detail=src-src_low;dst_detail=dst-dst_low
+    gate=np.clip((np.abs(src_detail)-1.5)/3,0,1)
+    gate*=np.clip((16-np.abs(src_low-dst_low))/10,0,1)
+    gate*=src_detail*dst_detail>0
+    delta=np.clip(dst_detail-src_detail,-6,6)*gate
+    return Image.fromarray(np.rint(np.clip(original+delta[...,None],0,255)).astype(np.uint8))
+
+
 def protect_source_structure(result,source,source_blend=0,protect=True):
     """Reduce large local changes; this is not an anatomical correctness check.
 

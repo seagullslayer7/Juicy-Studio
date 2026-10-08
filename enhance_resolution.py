@@ -2,6 +2,7 @@
 TARGETS = {
     '2x': ('2× source', None),
     '4x': ('4× source', None),
+    'original': ('Source resolution', None),
     '720p': ('720p · HD', (1280, 720)),
     '1080p': ('1080p · Full HD', (1920, 1080)),
     '1440p': ('1440p · QHD', (2560, 1440)),
@@ -15,7 +16,9 @@ def output_size(width, height, target='2x'):
     if not isinstance(width, int) or not isinstance(height, int) or min(width, height) <= 0:
         raise ValueError('Invalid source dimensions.')
     bounds = TARGETS[target][1]
-    if bounds is None:
+    if target=='original':
+        out=(max(2,width//2*2),max(2,height//2*2))
+    elif bounds is None:
         out = (width * int(target[0]), height * int(target[0]))
     else:
         if height > width: bounds = bounds[::-1]

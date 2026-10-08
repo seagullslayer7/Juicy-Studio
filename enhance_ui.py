@@ -10,6 +10,8 @@ from subtitle_ui import action, VideoPreview
 from video_encoding import CODECS, ENCODER_LABELS
 from enhance_resolution import TARGETS, output_size, model_scale
 from enhance_quality import preview_size_estimate, size_text
+from enhance_framerate import FRAME_RATES
+from fractions import Fraction
 
 
 def playback_time(milliseconds):
@@ -93,6 +95,9 @@ class EnhanceWorkspace(QWidget):
         self.settings_panel = QFrame(); self.settings_panel.setObjectName('card')
         settings_box = QVBoxLayout(self.settings_panel); settings_box.setContentsMargins(12,8,12,8)
         self.settings_tabs = QTabWidget(); settings_box.addWidget(self.settings_tabs)
+        self.processing=Combo()
+        for label,value in [('AI · source-guided detail','guided'),('AI · full restoration','ai'),('Faithful resize · no AI','faithful')]:self.processing.addItem(label,value)
+        self.processing.setToolTip('Source-guided detail keeps the resized original geometry and colors, allowing only small, aligned AI texture changes across people and surroundings. Full restoration can reconstruct more detail but may alter shapes. Faithful resize uses bicubic scaling with no AI or face reconstruction; it cannot recover missing detail. Encoding and resizing still change pixels. No mode can guarantee perfect results.')
         self.model = Combo(); self.model.addItem('Animation','animation'); self.model.addItem('Live action','live')
         self.model.setToolTip('Choose an animation-video model or live-action restoration. Both support NVIDIA CUDA and Vulkan. Compare a short preview before exporting.')
         self.backend = Combo()
@@ -140,6 +145,9 @@ class EnhanceWorkspace(QWidget):
         self.preset.setCurrentIndex(1); self.preset.setToolTip('Controls encoding effort, not AI speed. Slower settings may improve compression. CPU HEVC and AV1 can be slow.')
         self.container = Combo(); self.container.addItem('Matroska (.mkv)','mkv'); self.container.addItem('MP4 (.mp4)','mp4')
         self.container.setToolTip('MKV supports all offered audio formats. MP4 uses AAC or compatible original audio. HEVC MP4 uses the hvc1 tag for player compatibility.')
+        self.output_fps=Combo()
+        for label,value in FRAME_RATES:self.output_fps.addItem(label,value)
+        self.output_fps.setToolTip('Keep the source average rate or select a constant output rate. Frames are repeated or dropped without changing playback speed or audio pitch. Higher FPS does not create smoother motion: no generated in-between frames. Variable-rate sources become constant-rate output. Lower rates skip unnecessary frames before AI processing.')
         self.audio_encoder = Combo()
         for label,value in [('Original · copy all tracks','copy'),('AAC','aac'),('Opus · MKV','libopus'),('FLAC · lossless, MKV','flac')]: self.audio_encoder.addItem(label,value)
         self.audio_encoder.setToolTip('Original copies every audio track without quality loss. AAC/Opus re-encode all tracks. FLAC stores decoded audio losslessly but cannot recover detail already lost in a compressed source. Opus and FLAC select MKV.')
@@ -152,13 +160,13 @@ class EnhanceWorkspace(QWidget):
         self.resolution = Combo()
         for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
         self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
-        groups = [('Enhancement',[('Content',self.model),('AI backend',self.backend),('AI graphics card',self.gpu),
-                                 ('Whole-frame restoration',self.restoration),('Output resolution',self.resolution),('Denoising',self.denoise)]),
+        groups = [('Enhancement',[('Processing',self.processing),('Content',self.model),('Output resolution',self.resolution),
+                                 ('Whole-frame model',self.restoration),('AI backend',self.backend),('AI graphics card',self.gpu)]),
                   ('Color',[('Color handling',self.colors),('Source color space',self.source_color)]),
-                  ('Detail',[('Source texture recovery',self.texture_recovery),('Source blend',self.source_blend),('Protect source structure',self.structure_protection)]),
+                  ('Detail',[('Source texture recovery',self.texture_recovery),('Source blend',self.source_blend),('Protect source structure',self.structure_protection),('Denoising',self.denoise)]),
                   ('People',[('Face restoration',self.face_restore),('Face strength',self.face_strength),('Keep face texture',self.face_texture)]),
                   ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
-                               ('Encoding speed',self.preset)]),
+                               ('Encoding speed',self.preset),('Output frame rate',self.output_fps)]),
                   ('Compression',[('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate)]),
                   ('Audio',[('Audio encoder',self.audio_encoder),('Channels',self.audio_channels),('Audio bitrate',self.audio_bitrate)])]
         for title,fields in groups:
@@ -242,9 +250,9 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(False)
 
     def settings(self):
-        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution','colors','source_color','denoise')}
+        values = {key:getattr(self,key).currentData() for key in ('processing','output_fps','model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution','colors','source_color','denoise')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData(),
-            face_restore=self.face_restore.currentData() if self.model.currentData()=='live' else 'off',face_strength=str(int(self.face_strength.value())),
+            face_restore=self.face_restore.currentData() if self.model.currentData()=='live' and self.processing.currentData()=='ai' else 'off',face_strength=str(int(self.face_strength.value())),
             texture_recovery=str(int(self.texture_recovery.value())),face_texture=str(int(self.face_texture.value())),
             source_blend=str(int(self.source_blend.value())),structure_protection=self.structure_protection.currentData())
         return values
@@ -293,6 +301,7 @@ class EnhanceWorkspace(QWidget):
         self.update_output_summary()
 
     def installed(self):
+        if self.processing.currentData()=='faithful':return True
         if self.uses_cuda(): return True  # Verified CUDA model weights download on first use.
         # GUI can be frozen; the tools always belong beside the application.
         folder = self.root/'tools/enhance/realesrgan-20220424'
@@ -327,7 +336,7 @@ class EnhanceWorkspace(QWidget):
     def update_output_summary(self):
         target = self.resolution.currentData()
         if not self.video_path or not self.source_dimensions:
-            self.summary.setText('AI upscaling · '+TARGETS[target][0])
+            self.summary.setText(self.processing.currentText()+' · '+TARGETS[target][0])
             self.hint.setText('Select a video to see its output dimensions. Export censor edits first; add subtitles after upscaling.')
             return
         width,height = self.source_dimensions
@@ -335,7 +344,15 @@ class EnhanceWorkspace(QWidget):
             output = output_size(width,height,target)
         except ValueError as exc:
             self.summary.setText('Choose a smaller output'); self.hint.setText(str(exc)); return
-        self.summary.setText(f'{width} × {height} → {output[0]} × {output[1]}')
+        rate=self.output_fps.currentData()
+        rate_label='Source FPS' if rate=='source' else f'{float(Fraction(rate)):.3f}'.rstrip('0').rstrip('.')+' fps'
+        self.summary.setText(f'{width} × {height} → {output[0]} × {output[1]} · {rate_label}')
+        if self.processing.currentData()=='faithful':
+            self.hint.setText('Bicubic resizing across the whole frame · no AI models or invented details. Frame-rate conversion repeats/drops frames; playback speed is unchanged.')
+            return
+        if self.processing.currentData()=='guided':
+            self.hint.setText('Source-guided AI · bounded texture changes across the whole frame; original geometry and colors remain the reference. Face reconstruction is disabled. Compare a moving preview.')
+            return
         scale = model_scale(self.model.currentData(),width,height,output)
         if self.uses_cuda():
             scale = 4
@@ -404,6 +421,7 @@ class EnhanceWorkspace(QWidget):
             self.original.setPosition(round(self.preview_start*1000))
             label = 'Export' if data['type'] == 'enhance_exported' else 'Preview'
             self.result_label.setText(f"{label} · {data['width']} × {data['height']} · {playback_time(self.preview_start*1000)} – {playback_time((self.preview_start+self.preview_length)*1000)}")
+            if data.get('output_fps'):self.result_label.setText(self.result_label.text()+f" · {float(Fraction(data['output_fps'])):.3f}".rstrip('0').rstrip('.')+' fps')
             self.update_time()
             if data.get('output_bytes'):
                 if data['type']=='enhance_preview':
@@ -479,15 +497,20 @@ class EnhanceWorkspace(QWidget):
     def set_busy(self,busy):
         self.busy = busy; available = bool(self.video_path) and not busy
         animation = self.model.currentData() == 'animation'
+        faithful=self.processing.currentData()=='faithful'
+        full_ai=self.processing.currentData()=='ai'
         self.restoration.blockSignals(True)
         if animation or not self.uses_cuda(): self.restoration.setCurrentIndex(0)
         self.restoration.setItemText(0,'Animation · video model' if animation else 'Balanced · faster' if self.uses_cuda() else 'Detail · Vulkan model')
         self.restoration.blockSignals(False)
-        self.restoration.setEnabled(self.uses_cuda() and not animation)
-        self.denoise.setEnabled(self.uses_cuda() and not animation and self.restoration.currentData()=='balanced')
-        self.face_restore.setEnabled(not animation)
-        self.face_strength.setEnabled(not animation and self.face_restore.currentData()=='gfpgan')
-        self.face_texture.setEnabled(not animation and self.face_restore.currentData()=='gfpgan' and self.face_strength.value()>0)
+        self.restoration.setEnabled(not faithful and self.uses_cuda() and not animation)
+        self.model.setEnabled(not faithful);self.backend.setEnabled(not faithful);self.gpu.setEnabled(not faithful)
+        self.colors.setEnabled(full_ai);self.texture_recovery.setEnabled(full_ai)
+        self.source_blend.setEnabled(not faithful);self.structure_protection.setEnabled(full_ai)
+        self.denoise.setEnabled(not faithful and self.uses_cuda() and not animation and self.restoration.currentData()=='balanced')
+        self.face_restore.setEnabled(full_ai and not animation)
+        self.face_strength.setEnabled(full_ai and not animation and self.face_restore.currentData()=='gfpgan')
+        self.face_texture.setEnabled(full_ai and not animation and self.face_restore.currentData()=='gfpgan' and self.face_strength.value()>0)
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

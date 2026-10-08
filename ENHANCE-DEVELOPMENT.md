@@ -97,6 +97,49 @@ selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 ## Implemented
 
+### Whole-frame fidelity modes
+
+**Enhancement → Processing** now offers:
+
+- **AI · source-guided detail** (default): runs the selected whole-frame model,
+  then uses the resized original as the output base. Only small, aligned luminance
+  texture changes are admitted, bounded to six 8-bit levels before encoding.
+  Flat regions and conflicting edges keep the source. This applies throughout
+  the image, including bodies and environments, but the result can remain much
+  softer than full reconstruction. It cannot recover missing anatomical detail.
+- **AI · full restoration**: retains the existing whole-frame reconstruction and
+  optional GFPGAN face pass, with texture recovery and source-protection controls.
+- **Faithful resize · no AI**: bicubic scaling without model inference, downloads,
+  or face reconstruction. Use this when preserving source appearance is more
+  important than reconstructing detail. It still resizes/re-encodes pixels.
+
+Face reconstruction is disabled in the first and third modes. Source-guided
+detail preserves source color differences regardless of the full-AI color setting.
+No mode guarantees perfect anatomy, motion, or artifact-free encoding. These are
+fidelity choices, not a new specialized full-body reconstruction model.
+
+### Output frame rate
+
+**Encoding → Output frame rate** offers the source average rate and common rates
+from 23.976 through 120 fps, including exact NTSC fractions. Output is constant
+frame rate; variable-rate input is normalized. Conversion drops or repeats frames
+without changing playback speed or audio pitch. A higher rate does not create
+smoother motion or invented intermediate poses; motion interpolation is not used.
+For reductions, unnecessary frames are dropped before AI. For increases, frames
+are repeated after AI to avoid redundant inference. Automatic bitrate uses the
+output rate, and completed previews display it. The existing elapsed time and ETA
+track processed frames; final encoding is reported separately.
+
+**Source resolution** is also available, for frame-rate conversion/re-encoding
+without enlargement. Odd dimensions round down to even pixels for 4:2:0 codecs.
+
+Validation: 110 automated tests pass, including exact fractional rate selection,
+48 fps conversions to 25/29.97/60 fps, frame counts, duration, copied audio packets,
+and faithful export with AI initialization explicitly forbidden. Actual CUDA and
+Vulkan source-guided exports convert a six-frame sample to 24/25 output frames
+while processing only six frames. These short checks do not establish broad
+motion/anatomical quality. Public sample comparisons are development-only.
+
 ### People and whole-frame detail
 
 For live action on NVIDIA CUDA, **Whole-frame restoration** offers:
@@ -287,7 +330,7 @@ hardware still require wider validation.
 Texture/fidelity validation adds eight tests for bypass and full-source output,
 bounded recovery, flat/noisy input, disagreement rejection, reduction of an
 artificial structural change, retention of fine detail, face compositing at 100%
-strength, and invalid settings (105 automated tests total). CUDA and Vulkan
+strength, and invalid settings. CUDA and Vulkan
 six-frame exports also pass with texture recovery, source protection, and 100%
 GFPGAN enabled. GUI controls fit at 1280×720, 1500×950, and 1920×1080. The public
 full-body reference comparison shows a modest fidelity improvement from source

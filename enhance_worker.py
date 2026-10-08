@@ -22,6 +22,7 @@ import zipfile
 from video_encoding import CODECS, encoder_options, select_export_encoder
 from enhance_resolution import TARGETS, output_size, model_scale
 from enhance_quality import color_pipeline, automatic_bitrate, preserve_chroma_array
+from enhance_framerate import frame_rates
 
 ROOT = Path(__file__).resolve().parent
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -122,6 +123,10 @@ def probe(video):
 
 
 def validate_settings(settings):
+    if settings.get('processing','ai') not in ('ai','guided','faithful'):raise ValueError('Choose a supported processing mode.')
+    frame_rates('30',settings.get('output_fps','source'))
+    if settings.get('processing','ai')!='ai' and settings.get('face_restore','off')!='off':
+        raise ValueError('Face reconstruction is available in Full AI restoration only.')
     for key in ('texture_recovery','face_texture','source_blend'):
         value=float(settings.get(key,0))
         if not math.isfinite(value) or not 0<=value<=100:raise ValueError('Texture recovery and source blend must be between 0 and 100%.')
@@ -252,7 +257,10 @@ def enhance(job, emit):
     if video == output or output.exists(): raise ValueError('Choose a new output filename; existing files are preserved.')
     if output.suffix.lower() not in ('.mp4', '.mkv'): raise ValueError('Choose an MP4 or MKV output.')
     model, gpu, quality, encoder = validate_settings(job.get('settings', {}))
-    backend = select_backend(job.get('settings', {}))
+    settings=job.get('settings',{})
+    faithful=settings.get('processing','ai')=='faithful'
+    guided=settings.get('processing','ai')=='guided'
+    backend = 'cpu' if faithful else select_backend(settings)
     if backend=='vulkan' and job.get('settings',{}).get('restoration') in ('detail4','bsrgan'):
         raise ValueError('This whole-frame model requires NVIDIA CUDA. Choose Detail on Vulkan.')
     if backend == 'vulkan' and not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
@@ -266,11 +274,12 @@ def enhance(job, emit):
     if not math.isfinite(start + length) or start < 0 or length <= 0 or (preview and length > 10):
         raise ValueError('Choose a preview of up to 10 seconds within the video.')
     audio_args = audio_options(encoding, output.suffix.lower(), info['audio'])
+    processing_fps,output_fps=frame_rates(info['fps'],settings.get('output_fps','source'))
     dimensions = output_size(info['width'], info['height'], job.get('settings', {}).get('resolution', '2x'))
     out_width, out_height = dimensions
     decode_color,encode_color,color_tags,color_note=color_pipeline(info,job.get('settings',{}).get('source_color','auto'))
     if encoding['rate_control']=='auto':
-        encoding['bitrate']=automatic_bitrate(info['width'],info['height'],float(Fraction(info['fps'])),dimensions,info.get('video_bitrate'),encoding['codec'],model)
+        encoding['bitrate']=automatic_bitrate(info['width'],info['height'],float(Fraction(output_fps)),dimensions,info.get('video_bitrate'),encoding['codec'],model)
     scale = model_scale(model, info['width'], info['height'], dimensions)
     token = job.get('partial_token', '')
     if not re.fullmatch('[0-9a-f]{32}', token): raise ValueError('Invalid enhancement job identifier.')
@@ -280,13 +289,13 @@ def enhance(job, emit):
     scratch.mkdir()
     partial = output.with_name(output.stem + '.' + token + '.partial' + output.suffix)
     output.parent.mkdir(parents=True, exist_ok=True)
-    width, height, fps = info['width'], info['height'], info['fps']
+    width, height, fps = info['width'], info['height'], processing_fps
     decoder = writer = None
     try:
         emit('stage', message=f'Preparing enhancement · {out_width} × {out_height} · {color_note}', percent=0)
         requested = ('auto' if encoding['codec'] == 'h264' else 'auto_'+encoding['codec']) if encoder == 'auto' else encoder
         encoder = select_export_encoder(requested, quality, encoding['preset'],
-            transforms=['-vf', f'scale={out_width}:{out_height}'], bitrate=encoding['bitrate'], fps=fps)
+            transforms=['-vf', f'scale={out_width}:{out_height}'], bitrate=encoding['bitrate'], fps=output_fps)
         enhancer = None
         if backend == 'cuda':
             from enhance_cuda import CudaEnhancer
@@ -294,6 +303,8 @@ def enhance(job, emit):
             enhancer = CudaEnhancer(ROOT,settings.get('restoration','balanced'),width,height,dimensions,gpu,emit,content=model,
                 denoise=float(settings.get('denoise','.15')),preserve_colors=settings.get('colors','source')=='source')
             engine_label = enhancer.name
+        elif faithful:
+            engine_label = 'Faithful resize · no AI reconstruction'
         else:
             engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
         face_restorer=None
@@ -301,7 +312,8 @@ def enhance(job, emit):
         texture_amount=float(settings.get('texture_recovery',0))/100
         source_blend=float(settings.get('source_blend',0))/100
         structure_protection=settings.get('structure_protection','off')=='on'
-        from enhance_texture import recover_source_texture,protect_source_structure
+        from enhance_texture import recover_source_texture,protect_source_structure,source_guided_detail
+        if guided:engine_label+=' · source-guided detail'
         if settings.get('face_restore','off')=='gfpgan' and float(settings.get('face_strength',35))>0:
             from enhance_people import FaceRestorer
             face_restorer=FaceRestorer(ROOT,enhancer.device if enhancer else 'cpu',float(settings.get('face_strength',35))/100,emit,
@@ -317,7 +329,8 @@ def enhance(job, emit):
             command = ['ffmpeg','-v','error','-nostdin','-n','-f','rawvideo','-pix_fmt','rgb24',
                 '-s',f'{out_width}x{out_height}','-r',fps,'-i','pipe:0','-ss',str(start),'-i',str(video),
                 '-map','0:v:0','-map','1:a?','-map_metadata','1','-t',str(length),
-                *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),'-vf',encode_color,*color_tags,*audio_args,'-avoid_negative_ts','disabled']
+                *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),'-vf',f'{encode_color},fps={output_fps}',
+                '-fps_mode','cfr',*color_tags,*audio_args,'-avoid_negative_ts','disabled']
             if encoding['rate_control']=='auto':
                 # Target an average with bounded bursts, rather than unlimited CQ.
                 command += ['-maxrate',str(round(int(encoding['bitrate'])*1.5)),'-bufsize',str(int(encoding['bitrate'])*3)]
@@ -332,13 +345,15 @@ def enhance(job, emit):
             progress = FrameProgress(max(1,math.ceil(length*float(Fraction(fps)))))
             last_report = time.monotonic()
             while True:
-                if enhancer is not None:
+                if enhancer is not None or faithful:
                     raw = read_frame(decoder.stdout,width*height*3)
                     if not raw: break
-                    enhanced_raw=enhancer.process(raw)
-                    if face_restorer or texture_amount>0 or source_blend>0 or structure_protection:
+                    enhanced_raw=(Image.frombytes('RGB',(width,height),raw).resize(dimensions,Image.Resampling.BICUBIC).tobytes()
+                                  if faithful else enhancer.process(raw))
+                    if not faithful and (guided or face_restorer or texture_amount>0 or source_blend>0 or structure_protection):
                         source_image=Image.frombytes('RGB',(width,height),raw)
-                        restored=recover_source_texture(Image.frombytes('RGB',dimensions,enhanced_raw),source_image,texture_amount)
+                        restored=Image.frombytes('RGB',dimensions,enhanced_raw)
+                        restored=(source_guided_detail(restored,source_image) if guided else recover_source_texture(restored,source_image,texture_amount))
                         if face_restorer:restored=face_restorer.process(source_image,restored)
                         restored=protect_source_structure(restored,source_image,source_blend,structure_protection)
                         enhanced_raw=restored.tobytes()
@@ -374,10 +389,10 @@ def enhance(job, emit):
                         if image.size != dimensions: image = image.resize(dimensions,Image.Resampling.LANCZOS)
                         if job.get('settings',{}).get('colors','source')=='source':
                             with Image.open(inputs/name) as original: image=preserve_chroma_array(image,original.convert('RGB'))
-                        if face_restorer or texture_amount>0 or source_blend>0 or structure_protection:
+                        if guided or face_restorer or texture_amount>0 or source_blend>0 or structure_protection:
                             with Image.open(inputs/name) as original:
                                 original=original.convert('RGB')
-                                image=recover_source_texture(image,original,texture_amount)
+                                image=source_guided_detail(image,original) if guided else recover_source_texture(image,original,texture_amount)
                                 if face_restorer:image=face_restorer.process(original,image)
                                 image=protect_source_structure(image,original,source_blend,structure_protection)
                         writer.stdin.write(image.tobytes())
@@ -399,6 +414,7 @@ def enhance(job, emit):
              length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
              output_bytes=output.stat().st_size,source_bytes=info.get('source_bytes',0),source_duration=info['duration'],
              target_bitrate=encoding['bitrate'],color_note=color_note,
+             output_fps=output_fps,processing_fps=fps,processing=settings.get('processing','ai'),
              face_restoration=bool(face_restorer),face_frames=face_restorer.frames_with_faces if face_restorer else 0,
              encoder=encoder, audio=encoding['audio'], audio_channels=encoding['audio_channels'], backend=backend)
     finally:
