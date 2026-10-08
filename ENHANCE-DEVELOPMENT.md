@@ -29,7 +29,7 @@ unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
 | --- | --- |
 | Video codec | H.264, H.265/HEVC, AV1 |
 | Video encoder | Automatic, NVIDIA NVENC, AMD AMF, Intel Quick Sync, CPU |
-| Rate control | Quality target (0–51, lower is better), or average bitrate (0.1–200 Mbps) |
+| Rate control | Automatic balanced size (default), Quality target (0–51, lower is better), or average bitrate (0.1–200 Mbps) |
 | Encoding speed | Fast, Balanced, Slower |
 | File format | MP4 or MKV |
 | Audio | Original, AAC, Opus, FLAC |
@@ -46,6 +46,18 @@ default and preserves all tracks without re-encoding.
 
 ## Output resolution
 
+HEVC and Automatic balanced size are the new defaults. Automatic estimates an
+average video bitrate from source bitrate, target resolution, frame rate, and
+codec, with bounded bursts. It avoids unconstrained quality encoding as the
+starting point. After a preview, the workspace estimates the full export size
+from that sample and shows its size relative to the source. This is an estimate:
+different scenes can require different amounts of data. Quality target remains
+available and can produce much larger files.
+
+Use **Fit**, **Zoom 2×**, or **Zoom 4×** by the playback controls. Drag either
+zoomed panel to move both views to the same normalized position. These controls
+only affect comparison playback, not the exported resolution.
+
 Choose **720p**, **1080p**, **1440p/QHD**, **4K/UHD**, or **2×/4× source size**.
 The default remains 2×. Presets fit the image within 1280×720, 1920×1080,
 2560×1440, or 3840×2160, swapping the bounds for portrait footage. No cropping,
@@ -57,8 +69,9 @@ Vulkan animation chooses the smallest sufficient 2×, 3×, or 4× AI model. CUDA
 animation uses the official lightweight 4× anime-video model, then resizes to
 the requested target. It stays resident across frames just like CUDA live action.
 CUDA live action offers Balanced, a lightweight 4× general-video model with
-moderate denoising, and Detail, a heavier native 2× model for targets up to 2× or
-4× for larger targets. Balanced can smooth more texture; compare a short preview
+adjustable denoising (Low by default), and Detail, a heavier native 2× model for targets up to 2× or
+4× for larger targets. Off/Low retains more texture; Strong smooths more noise.
+Denoising strength applies only to CUDA Balanced. Compare a short preview
 before choosing. Vulkan live action retains its 4× Detail model. Antialiased
 bicubic resizing on CUDA, or Lanczos on Vulkan, fits the requested dimensions.
 Targets beyond 4× source size include conventional enlargement after
@@ -83,6 +96,21 @@ the generated audio when available. Shared Export settings also offer automatic 
 selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 ## Implemented
+
+### Color handling
+
+The **Color** tab defaults to Preserve source colors: retain the resized
+original's color differences while taking luminance detail from the AI result.
+Allow AI color changes uses the model's complete output instead. Preservation
+reduces model-induced hue and saturation changes, but is not a guarantee of an
+identical image, particularly where channels clip near black or white.
+
+Source decoding reads matrix/range tags. Without a matrix tag, Automatic assumes
+BT.709 for HD (at least 1280 pixels wide or 720 high), otherwise BT.601. Override
+the source matrix if that assumption is wrong. RGB output is explicitly converted
+to limited-range BT.709 YUV and tagged, instead of relying on player guesses.
+Known source primaries and transfer tags are retained; missing values assume
+BT.709. These controls do not add HDR support or repair incorrectly mastered video.
 
 - Real-ESRGAN ncnn Vulkan on NVIDIA/AMD graphics, with automatic or explicit GPU
   selection by detected device name. CUDA and Vulkan enumerate their own cards
@@ -121,7 +149,7 @@ future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-85 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+90 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -168,6 +196,15 @@ now leaves the window open with an explanation instead of crashing at startup;
 the test suite covers that failure path, and the native UI checks cover retry.
 
 Backend: https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan
+
+Color/size validation includes explicit SD/HD/full-range output conversion and
+metadata checks, source-chroma preservation, automatic bitrate boundaries, and
+an actual CUDA/HEVC preview with a full-size estimate. Two-second user samples
+targeted 8.7 Mbps for 720p/59fps live action at 1440p (the prior export was
+46.5 Mbps), and 4.8 Mbps for 404p animation at 1080p, using AV1. These demonstrate
+size control, not equivalent perceived quality or guaranteed full-video sizes.
+Restoration quality still needs scene-by-scene review; AI cannot recover a known
+ground truth from missing source detail.
 
 ## Existing subtitle files
 

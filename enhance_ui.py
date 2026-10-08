@@ -9,6 +9,7 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaMetaData
 from subtitle_ui import action, VideoPreview
 from video_encoding import CODECS, ENCODER_LABELS
 from enhance_resolution import TARGETS, output_size, model_scale
+from enhance_quality import preview_size_estimate, size_text
 
 
 def playback_time(milliseconds):
@@ -26,6 +27,44 @@ class ComparisonSeek(QSlider):
                 max(0,min(self.width()-10,round(event.position().x())-5)),max(1,self.width()-10))
             self.setValue(value); self.sliderMoved.emit(value)
         super().mousePressEvent(event)
+
+
+class EnhancementView(VideoPreview):
+    panned=Signal(float,float)
+
+    def __init__(self,player):
+        self.zoom_factor=1.;self.view_center=(.5,.5)
+        super().__init__(player)
+        self.setDragMode(self.DragMode.ScrollHandDrag)
+        self.setToolTip('Use comparison zoom to inspect detail. Drag either panel to move both views together.')
+
+    def apply_zoom(self):
+        self.fitInView(self.sceneRect(),Qt.AspectRatioMode.KeepAspectRatio)
+        self.scale(self.zoom_factor,self.zoom_factor)
+        self.centerOn(self.size.width()*self.view_center[0],self.size.height()*self.view_center[1])
+
+    def set_video_size(self,size):
+        super().set_video_size(size)
+        self.apply_zoom()
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event);self.apply_zoom()
+
+    def set_zoom(self,factor):
+        self.zoom_factor=float(factor)
+        if factor==1:self.view_center=(.5,.5)
+        self.apply_zoom()
+
+    def follow_pan(self,x,y):
+        self.view_center=(x,y)
+        self.centerOn(x*self.size.width(),y*self.size.height())
+
+    def mouseMoveEvent(self,event):
+        super().mouseMoveEvent(event)
+        if event.buttons() & Qt.MouseButton.LeftButton and self.zoom_factor>1:
+            point=self.mapToScene(self.viewport().rect().center())
+            self.view_center=(point.x()/self.size.width(),point.y()/self.size.height())
+            self.panned.emit(*self.view_center)
 
 
 class EnhanceWorkspace(QWidget):
@@ -60,17 +99,26 @@ class EnhanceWorkspace(QWidget):
         for label,value in [('Automatic','auto'),('NVIDIA CUDA','cuda'),('Vulkan · NVIDIA / AMD','vulkan')]: self.backend.addItem(label,value)
         self.backend.setToolTip('Automatic uses CUDA when an NVIDIA runtime is ready; otherwise Vulkan. CUDA keeps animation or live-action models in GPU memory across frames. Video encoding is a separate setting.')
         self.restoration = Combo(); self.restoration.addItem('Balanced · faster','balanced'); self.restoration.addItem('Detail · slower','detail')
-        self.restoration.setToolTip('CUDA live action: Balanced uses a lightweight general-video model with moderate denoising. Detail uses a heavier native 2× model for targets up to 2×, or 4× for larger targets. These produce different results; compare a preview. Vulkan live action uses the legacy Detail model.')
+        self.restoration.setToolTip('CUDA live action: Balanced is faster and offers adjustable denoising. Detail is heavier and may restore fine structure better, but can invent texture; it uses native 2× for targets up to 2×. Compare a short preview. More pixels do not guarantee more real detail. Vulkan uses the Detail model.')
+        self.denoise=Combo()
+        for label,value in [('Low · keep texture','0.15'),('Off','0'),('Medium','0.5'),('Strong · smoother','1')]:self.denoise.addItem(label,value)
+        self.denoise.setToolTip('CUDA Balanced live-action model only. Lower denoising retains more original texture; strong denoising can make clean footage look soft. This does not affect the Detail or Animation model.')
+        self.colors=Combo();self.colors.addItem('Preserve source colors','source');self.colors.addItem('Allow AI color changes','ai')
+        self.colors.setToolTip('Preserve source colors keeps the resized original’s color differences while using the AI’s luminance detail. This reduces model-induced hue/saturation changes; it cannot fix incorrect source color tags.')
+        self.source_color=Combo()
+        for label,value in [('Automatic · use source tags','auto'),('BT.709 · HD','bt709'),('BT.601 · SD','bt601')]:self.source_color.addItem(label,value)
+        self.source_color.setToolTip('Automatic reads the source matrix tag; untagged HD assumes BT.709 and SD assumes BT.601. Override if the source is mis-tagged or looks wrong. Exports use explicitly tagged BT.709 YUV conversion.')
         self.gpu = Combo(); self.gpu.addItem('Automatic','auto')
         self.gpu.setToolTip('Detected graphics cards for the selected AI backend. Automatic chooses the default device. Switching backend resets the selection. Vulkan cards appear after the enhancement engine is installed.')
         self.codec = Combo()
         for value,(label,_) in CODECS.items(): self.codec.addItem(label,value)
+        self.codec.setCurrentIndex(self.codec.findData('hevc'))
         self.codec.setToolTip('H.264 has broad playback support. HEVC and AV1 can reduce file size but require compatible players. Output remains 8-bit SDR.')
         self.encoder = Combo(); self.populate_encoders()
         self.encoder.setToolTip('Automatic tries working hardware, then CPU, for the selected codec. Manual choices are tested before upscaling. Availability depends on your GPU, driver, and FFmpeg build. AI processing uses its own GPU setting.')
-        self.rate_control = Combo(); self.rate_control.addItem('Quality target','quality'); self.rate_control.addItem('Bitrate target','bitrate')
-        self.rate_control.setToolTip('Quality target lets file size vary with the scene. Bitrate target sets an average video bitrate; actual size and bitrate can vary.')
-        self.quality = Spin(); self.quality.setDecimals(0); self.quality.setRange(0,51); self.quality.setValue(18)
+        self.rate_control = Combo(); self.rate_control.addItem('Automatic · balanced size','auto');self.rate_control.addItem('Quality target · size varies','quality'); self.rate_control.addItem('Bitrate target','bitrate')
+        self.rate_control.setToolTip('Automatic targets a bitrate based on source bitrate, output pixels, frame rate, and codec, with bounded bursts. Quality target can produce very large files. Bitrate target uses your chosen average. Preview estimates help compare size; none guarantees an exact size or quality.')
+        self.quality = Spin(); self.quality.setDecimals(0); self.quality.setRange(0,51); self.quality.setValue(23)
         self.quality.setToolTip('Lower values preserve more detail and use more space. Try 18 for high quality or 23 for smaller files. This uses CRF/CQ/QP depending on the encoder; values are not equivalent across codecs and 0 is not a universal lossless mode.')
         self.bitrate = Spin(); self.bitrate.setRange(.1,200); self.bitrate.setDecimals(1); self.bitrate.setSingleStep(1); self.bitrate.setValue(12); self.bitrate.setSuffix(' Mbps')
         self.bitrate.setToolTip('Average video bitrate, excluding audio. Higher resolutions and frame rates generally need more bitrate. This is not a strict file-size limit.')
@@ -92,10 +140,11 @@ class EnhanceWorkspace(QWidget):
         for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
         self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
         groups = [('Enhancement',[('Content',self.model),('AI backend',self.backend),('AI graphics card',self.gpu),
-                                 ('Restoration',self.restoration),('Output resolution',self.resolution)]),
+                                 ('Restoration',self.restoration),('Output resolution',self.resolution),('Denoising',self.denoise)]),
+                  ('Color',[('Color handling',self.colors),('Source color space',self.source_color)]),
                   ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
-                               ('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate),
                                ('Encoding speed',self.preset)]),
+                  ('Compression',[('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate)]),
                   ('Audio',[('Audio encoder',self.audio_encoder),('Channels',self.audio_channels),('Audio bitrate',self.audio_bitrate)])]
         for title,fields in groups:
             page=QWidget(); settings_row=QGridLayout(page); settings_row.setContentsMargins(8,8,8,8)
@@ -114,14 +163,18 @@ class EnhanceWorkspace(QWidget):
         self.sound_muted = False
         # Hear the generated mix when available, with only one panel audible.
         self.update_audio_source()
+        self.comparison_views=[]
         for title,player in [('Original',self.original),('Enhanced · generate a preview',self.enhanced)]:
             panel = QFrame(); panel.setObjectName('card'); box = QVBoxLayout(panel); box.setContentsMargins(14,12,14,14)
             label = QLabel(title); box.addWidget(label)
             if player is self.enhanced: self.result_label = label
-            video = VideoPreview(player); video.setMinimumSize(200,160); box.addWidget(video,1)
+            video = EnhancementView(player); video.setMinimumSize(200,130); box.addWidget(video,1)
+            self.comparison_views.append(video)
             if player is self.original: video.video.nativeSizeChanged.connect(self.source_size_changed)
             previews.addWidget(panel,1)
         layout.addLayout(previews,1)
+        self.comparison_views[0].panned.connect(self.comparison_views[1].follow_pan)
+        self.comparison_views[1].panned.connect(self.comparison_views[0].follow_pan)
         controls = QHBoxLayout()
         self.play_button = action('',self.toggle_play,'Play or pause the preview')
         self.play_button.setAccessibleName('Play or pause comparison')
@@ -135,6 +188,11 @@ class EnhanceWorkspace(QWidget):
         self.seek.sliderMoved.connect(self.seek_to)
         self.seek.actionTriggered.connect(lambda _: QTimer.singleShot(0,lambda:self.seek_to(self.seek.value())))
         controls.addWidget(self.seek,1)
+        self.comparison_zoom=Combo()
+        for label,value in [('Fit',1),('Zoom 2×',2),('Zoom 4×',4)]:self.comparison_zoom.addItem(label,value)
+        self.comparison_zoom.setToolTip('Magnify the same area in both panels to compare texture and edges. Drag either image to pan. This changes only the view, not the export.')
+        self.comparison_zoom.currentIndexChanged.connect(lambda:[view.set_zoom(self.comparison_zoom.currentData()) for view in self.comparison_views])
+        controls.addWidget(self.comparison_zoom)
         self.mute = action('Sound on',self.toggle_mute,'Toggle sound. Uses the generated file’s audio when available, otherwise the original; never plays both at once.')
         controls.addWidget(self.mute); layout.addLayout(controls)
         footer = QHBoxLayout(); footer.setSpacing(12)
@@ -151,6 +209,7 @@ class EnhanceWorkspace(QWidget):
         footer.addWidget(self.preview_button); footer.addWidget(self.export_button); layout.addLayout(footer)
         self.hint = QLabel('Select a video from the shared queue. Export censor edits first; add subtitle burn-in after upscaling.')
         self.hint.setWordWrap(True); self.hint.setObjectName('muted'); layout.addWidget(self.hint)
+        self.size_hint=QLabel('Generate a short preview to estimate the full export size.');self.size_hint.setObjectName('muted');self.size_hint.setWordWrap(True);layout.addWidget(self.size_hint)
         for player in (self.original,self.enhanced):
             player.errorOccurred.connect(lambda error,text:self.host.set_status('Enhancement preview unavailable: '+text))
         self.original.durationChanged.connect(self.duration_changed)
@@ -163,7 +222,7 @@ class EnhanceWorkspace(QWidget):
         self.set_busy(False)
 
     def settings(self):
-        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution')}
+        values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution','colors','source_color','denoise')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
         return values
 
@@ -272,6 +331,7 @@ class EnhanceWorkspace(QWidget):
         self.pause(); self.preview_path = None; self.enhanced.setSource(QUrl())
         self.update_audio_source()
         self.result_label.setText('Enhanced · generate a preview')
+        self.size_hint.setText('Generate a short preview to estimate the full export size.')
         self.seek.setRange(0,self.original.duration())
         self.update_time()
         self.update_output_summary()
@@ -322,6 +382,12 @@ class EnhanceWorkspace(QWidget):
             label = 'Export' if data['type'] == 'enhance_exported' else 'Preview'
             self.result_label.setText(f"{label} · {data['width']} × {data['height']} · {playback_time(self.preview_start*1000)} – {playback_time((self.preview_start+self.preview_length)*1000)}")
             self.update_time()
+            if data.get('output_bytes'):
+                if data['type']=='enhance_preview':
+                    estimate=preview_size_estimate(data['output_bytes'],data['length'],data.get('source_duration',self.original.duration()/1000),data.get('source_bytes',0))
+                else:estimate='Export size: '+size_text(data['output_bytes'])
+                if data.get('target_bitrate'):estimate+=f" · Video target {int(data['target_bitrate'])/1e6:.1f} Mbps"
+                self.size_hint.setText(estimate);self.size_hint.setToolTip(data.get('color_note',''))
             self.host.set_status('Preview ready. Play both panels to compare the same section.')
         if data['type'] == 'enhance_exported':
             self.host.last_output = data['output']; self.host.open_result_btn.setEnabled(True)
@@ -392,6 +458,7 @@ class EnhanceWorkspace(QWidget):
         self.restoration.setItemText(0,'Animation · video model' if animation else 'Balanced · faster' if self.uses_cuda() else 'Detail · Vulkan model')
         self.restoration.blockSignals(False)
         self.restoration.setEnabled(self.uses_cuda() and not animation)
+        self.denoise.setEnabled(self.uses_cuda() and not animation and self.restoration.currentData()=='balanced')
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

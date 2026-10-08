@@ -21,6 +21,7 @@ from uuid import uuid4
 import zipfile
 from video_encoding import CODECS, encoder_options, select_export_encoder
 from enhance_resolution import TARGETS, output_size, model_scale
+from enhance_quality import color_pipeline, automatic_bitrate, preserve_chroma_array
 
 ROOT = Path(__file__).resolve().parent
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -115,10 +116,15 @@ def probe(video):
     if stream.get('sample_aspect_ratio', '1:1') not in ('1:1', '0:1', 'N/A'):
         raise ValueError('Convert this video to square pixels before enhancement.')
     return dict(width=width, height=height, fps=str(fps), duration=duration,
+                video_bitrate=int(stream.get('bit_rate') or 0), source_bytes=Path(video).stat().st_size,
+                **{key:stream.get(key) for key in ('color_space','color_range','color_primaries','color_transfer','pix_fmt')},
                 audio=[s for s in data['streams'] if s['codec_type'] == 'audio'])
 
 
 def validate_settings(settings):
+    if settings.get('source_color','auto') not in ('auto','bt601','bt709'):raise ValueError('Unsupported source color matrix.')
+    if settings.get('colors','source') not in ('source','ai'):raise ValueError('Choose Source colors or AI colors.')
+    if str(settings.get('denoise','0.15')) not in ('0','0.15','0.5','1'):raise ValueError('Unsupported denoising strength.')
     if settings.get('backend','auto') not in ('auto','cuda','vulkan'): raise ValueError('Choose a supported AI backend.')
     if settings.get('restoration','balanced') not in ('balanced','detail'): raise ValueError('Choose Balanced or Detail restoration.')
     if settings.get('resolution', '2x') not in TARGETS: raise ValueError('Choose a supported output resolution.')
@@ -140,7 +146,7 @@ def export_settings(settings):
     if codec not in CODECS or encoder not in ('auto', *CODECS[codec][1]):
         raise ValueError('Choose an encoder compatible with the selected video codec.')
     rate = settings.get('rate_control', 'quality')
-    if rate not in ('quality', 'bitrate'): raise ValueError('Unsupported rate control.')
+    if rate not in ('auto','quality', 'bitrate'): raise ValueError('Unsupported rate control.')
     bitrate = str(settings.get('bitrate', '12000000')) if rate == 'bitrate' else None
     preset = settings.get('preset', 'medium')
     encoder_options(CODECS[codec][1][-1], str(settings.get('quality', '18')), preset, bitrate)
@@ -154,7 +160,7 @@ def export_settings(settings):
     container = settings.get('container', 'mkv')
     if container not in ('mp4', 'mkv'): raise ValueError('Choose MP4 or MKV.')
     return dict(codec=codec, encoder=encoder, preset=preset, bitrate=bitrate, audio=audio,
-                audio_bitrate=audio_bitrate, audio_channels=channels, container=container)
+                audio_bitrate=audio_bitrate, audio_channels=channels, container=container, rate_control=rate)
 
 
 def audio_options(settings, suffix, streams):
@@ -252,6 +258,9 @@ def enhance(job, emit):
     audio_args = audio_options(encoding, output.suffix.lower(), info['audio'])
     dimensions = output_size(info['width'], info['height'], job.get('settings', {}).get('resolution', '2x'))
     out_width, out_height = dimensions
+    decode_color,encode_color,color_tags,color_note=color_pipeline(info,job.get('settings',{}).get('source_color','auto'))
+    if encoding['rate_control']=='auto':
+        encoding['bitrate']=automatic_bitrate(info['width'],info['height'],float(Fraction(info['fps'])),dimensions,info.get('video_bitrate'),encoding['codec'],model)
     scale = model_scale(model, info['width'], info['height'], dimensions)
     token = job.get('partial_token', '')
     if not re.fullmatch('[0-9a-f]{32}', token): raise ValueError('Invalid enhancement job identifier.')
@@ -264,14 +273,16 @@ def enhance(job, emit):
     width, height, fps = info['width'], info['height'], info['fps']
     decoder = writer = None
     try:
-        emit('stage', message=f'Preparing enhancement · {out_width} × {out_height} · {scale}× AI model', percent=0)
+        emit('stage', message=f'Preparing enhancement · {out_width} × {out_height} · {color_note}', percent=0)
         requested = ('auto' if encoding['codec'] == 'h264' else 'auto_'+encoding['codec']) if encoder == 'auto' else encoder
         encoder = select_export_encoder(requested, quality, encoding['preset'],
             transforms=['-vf', f'scale={out_width}:{out_height}'], bitrate=encoding['bitrate'], fps=fps)
         enhancer = None
         if backend == 'cuda':
             from enhance_cuda import CudaEnhancer
-            enhancer = CudaEnhancer(ROOT,job.get('settings',{}).get('restoration','balanced'),width,height,dimensions,gpu,emit,content=model)
+            settings=job.get('settings',{})
+            enhancer = CudaEnhancer(ROOT,settings.get('restoration','balanced'),width,height,dimensions,gpu,emit,content=model,
+                denoise=float(settings.get('denoise','.15')),preserve_colors=settings.get('colors','source')=='source')
             engine_label = enhancer.name
         else:
             engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
@@ -280,12 +291,15 @@ def enhance(job, emit):
             decode_log = stack.enter_context((scratch/'decode.log').open('w+'))
             encode_log = stack.enter_context((scratch/'encode.log').open('w+'))
             decoder = subprocess.Popen(['ffmpeg','-v','error','-nostdin','-ss',str(start),'-i',str(video),
-                '-t',str(length),'-map','0:v:0','-vf',f'fps={fps}','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],
+                '-t',str(length),'-map','0:v:0','-vf',f'fps={fps},{decode_color}','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],
                 stdout=subprocess.PIPE, stderr=decode_log, creationflags=FLAGS)
             command = ['ffmpeg','-v','error','-nostdin','-n','-f','rawvideo','-pix_fmt','rgb24',
                 '-s',f'{out_width}x{out_height}','-r',fps,'-i','pipe:0','-ss',str(start),'-i',str(video),
                 '-map','0:v:0','-map','1:a?','-map_metadata','1','-t',str(length),
-                *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),*audio_args,'-avoid_negative_ts','disabled']
+                *encoder_options(encoder,quality,encoding['preset'],encoding['bitrate']),'-vf',encode_color,*color_tags,*audio_args,'-avoid_negative_ts','disabled']
+            if encoding['rate_control']=='auto':
+                # Target an average with bounded bursts, rather than unlimited CQ.
+                command += ['-maxrate',str(round(int(encoding['bitrate'])*1.5)),'-bufsize',str(int(encoding['bitrate'])*3)]
             if output.suffix.lower() == '.mp4':
                 command += ['-movflags','+faststart']
                 if encoding['codec'] == 'hevc': command += ['-tag:v','hvc1']
@@ -330,6 +344,8 @@ def enhance(job, emit):
                         if image.size != (width*scale,height*scale): raise RuntimeError('Unexpected AI output dimensions.')
                         image = image.convert('RGB')
                         if image.size != dimensions: image = image.resize(dimensions,Image.Resampling.LANCZOS)
+                        if job.get('settings',{}).get('colors','source')=='source':
+                            with Image.open(inputs/name) as original: image=preserve_chroma_array(image,original.convert('RGB'))
                         writer.stdin.write(image.tobytes())
                     (inputs/name).unlink(); (results/name).unlink()
                     count += 1
@@ -347,6 +363,8 @@ def enhance(job, emit):
         partial.rename(output)
         emit('enhance_preview' if preview else 'enhance_exported', output=str(output), start=start,
              length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
+             output_bytes=output.stat().st_size,source_bytes=info.get('source_bytes',0),source_duration=info['duration'],
+             target_bitrate=encoding['bitrate'],color_note=color_note,
              encoder=encoder, audio=encoding['audio'], audio_channels=encoding['audio_channels'], backend=backend)
     finally:
         for process in (decoder,writer):

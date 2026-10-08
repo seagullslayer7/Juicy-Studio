@@ -51,7 +51,7 @@ def ensure_weights(folder, names, emit):
 
 
 class CudaEnhancer:
-    def __init__(self, root, profile, width, height, output, gpu, emit, content='live'):
+    def __init__(self, root, profile, width, height, output, gpu, emit, content='live', denoise=.15, preserve_colors=True):
         import torch
         from enhance_networks import SRVGGNetCompact, RRDBNet
         if not torch.cuda.is_available(): raise ValueError('NVIDIA CUDA is unavailable. Install the NVIDIA runtime or choose Vulkan.')
@@ -62,6 +62,7 @@ class CudaEnhancer:
         self.width, self.height, self.output = width, height, output
         self.scale, names = model_choice(profile, width, height, output, content)
         self.profile = profile
+        self.preserve_colors=preserve_colors
         folder = Path(root)/'tools/enhance/torch-models'
         ensure_weights(folder, names, emit)
         emit('stage', message=f'Loading {profile} AI model · {torch.cuda.get_device_name(index)}', phase='load', percent=0)
@@ -71,8 +72,8 @@ class CudaEnhancer:
         for name in names:
             checkpoint = torch.load(folder/name, map_location='cpu', weights_only=True)
             states.append(checkpoint.get('params_ema', checkpoint.get('params', checkpoint)))
-        # Official default DNI: blend strong/weak denoising to retain texture.
-        state = states[0] if len(states) == 1 else {k:.5*states[0][k]+.5*states[1][k] for k in states[0]}
+        # Blend the official strong/weak weights at the selected denoise strength.
+        state = states[0] if len(states) == 1 else {k:denoise*states[0][k]+(1-denoise)*states[1][k] for k in states[0]}
         net.load_state_dict(state, strict=True)
         self.net = net.eval().requires_grad_(False).to(device=self.device, dtype=torch.float16, memory_format=torch.channels_last)
         free, _ = torch.cuda.mem_get_info(self.device)
@@ -115,5 +116,10 @@ class CudaEnhancer:
             result = result[:,:,:self.height*self.scale,:self.width*self.scale].float().clamp_(0,1)
             if result.shape[-2:] != (self.output[1],self.output[0]):
                 result = torch.nn.functional.interpolate(result,size=(self.output[1],self.output[0]),mode='bicubic',align_corners=False,antialias=True)
+            if self.preserve_colors:
+                original=tensor[:,:,:self.height,:self.width].float()
+                original=torch.nn.functional.interpolate(original,size=(self.output[1],self.output[0]),mode='bicubic',align_corners=False,antialias=True).clamp_(0,1)
+                weights=result.new_tensor([.2126,.7152,.0722]).view(1,3,1,1)
+                result=original+((result-original)*weights).sum(dim=1,keepdim=True)
             if not torch.isfinite(result).all(): raise RuntimeError('AI output contains invalid pixels; processing stopped to protect the export.')
             return result.clamp_(0,1).mul_(255).round_().to(torch.uint8).squeeze(0).permute(1,2,0).contiguous().cpu().numpy().tobytes()
