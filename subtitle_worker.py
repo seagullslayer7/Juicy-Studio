@@ -12,7 +12,7 @@ import wave
 from pathlib import Path
 from uuid import uuid4
 
-from subtitle_document import cue, new_document, validate_document, export_text
+from subtitle_document import cue, new_document, validate_document, export_text, import_subtitles
 from languages import validate_language_model
 
 ROOT = Path(__file__).resolve().parent
@@ -209,6 +209,27 @@ def waveform(video, emit):
     emit('subtitle_waveform', peaks=peaks, duration=duration)
 
 
+def prepare_export_subtitles(job,scratch):
+    """Keep external subtitle formatting intact; never replace the editor doc."""
+    if job.get('subtitle_file'):
+        source=Path(job['subtitle_file']).resolve()
+        suffix=source.suffix.lower()
+        if not source.is_file() or suffix not in ('.srt','.vtt','.ass','.ssa'):
+            raise ValueError('Choose an existing SRT, VTT, ASS, or SSA subtitle file.')
+        try:
+            import_subtitles(source)  # Validate cues/timing, without exporting the stripped import.
+            text=source.read_text(encoding='utf-8-sig')
+        except (UnicodeError,KeyError,ValueError) as exc:
+            raise ValueError('The subtitle file could not be read. Use valid UTF-8 SRT, VTT, ASS, or SSA subtitles.') from exc
+        font_name=None
+    else:
+        text=export_text(job['document'],'ass',job.get('track','source'))
+        suffix='.ass'; font_name=job['document'].get('style',{}).get('font','Trebuchet MS')
+    subtitle=Path(scratch)/('captions'+suffix)
+    subtitle.write_text(text,encoding='utf-8-sig')
+    return subtitle,font_name
+
+
 def export_video(job, emit):
     import autocensor as core
     video, output = Path(job['video']).resolve(), Path(job['output']).resolve()
@@ -216,7 +237,6 @@ def export_video(job, emit):
     format_name = job['format']
     if format_name not in ('mp4', 'mkv') or output.suffix.lower() != '.'+format_name:
         raise ValueError('Choose MP4 or MKV with the matching file extension.')
-    text = export_text(job['document'], 'ass', job.get('track', 'source'))
     output.parent.mkdir(parents=True, exist_ok=True)
     duration = core.probe_duration(video)
     emit('estimate', duration=duration, backend='render')
@@ -225,13 +245,11 @@ def export_video(job, emit):
     partial = output.with_name(output.stem+'.'+token+'.partial'+output.suffix)
     try:
         with scratch_directory() as scratch:
-            subtitle = Path(scratch)/'captions.ass'
-            subtitle.write_text(text, encoding='utf-8-sig')
+            subtitle,font_name = prepare_export_subtitles(job,scratch)
             command = ['ffmpeg', '-hide_banner', '-nostdin', '-n', '-i', str(video)]
             if format_name == 'mkv':
                 command += ['-i', str(subtitle), '-map', '0:v:0', '-map', '0:a?', '-map', '1:0', '-c', 'copy',
-                            '-metadata:s:s:0', 'title=JuicyCensor subtitles', '-disposition:s:0', 'default']
-                font_name = job['document'].get('style', {}).get('font', 'Trebuchet MS')
+                            '-metadata:s:s:0', 'title=Subtitles', '-disposition:s:0', 'default']
                 font_file = {'Trebuchet MS': 'trebucbd.ttf', 'Segoe UI': 'segoeuib.ttf', 'Arial': 'arialbd.ttf'}.get(font_name)
                 font = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts'/str(font_file)
                 if font_file and font.is_file():
@@ -247,7 +265,7 @@ def export_video(job, emit):
                                   export_resolution='original', export_fps='original', export_preset='medium')
                 encoding = core.export_encoding_args(config, video)
                 vf = encoding.index('-vf')
-                encoding[vf+1] += ',subtitles=captions.ass'
+                encoding[vf+1] += ',subtitles='+subtitle.name
                 # Retain common MP4-compatible audio exactly. Otherwise use the
                 # configured audio encode so MKV-only audio cannot break an MP4 export.
                 probe = run(['ffprobe','-v','error','-select_streams','a','-show_entries','stream=codec_name','-of','json',str(video)], capture_output=True, text=True)

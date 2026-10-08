@@ -4,6 +4,12 @@
 > live speed/remaining-time estimates. See [setup, features, and limits](ENHANCE-DEVELOPMENT.md).
 > The downloads below remain the stable 3.0 release.
 > See the [editor roadmap](EDITOR-ROADMAP.md) for the planned project and timeline workflow.
+>
+> **Already have subtitles?** In the development preview, open the matching video
+> and choose **Subtitles & Translation → Export → Video with subtitles…**. Select
+> **Existing subtitle file**, browse to an SRT/VTT/ASS/SSA file, then choose MP4
+> for permanent subtitles or MKV for a switchable track. No transcription is
+> required. ASS/SSA files keep their styling; their fonts must be installed.
 
 <p align="center"><img src="assets/readme-banner.svg" alt="JuicyCensor 3.0 — Filter the Juice" width="900"></p>
 

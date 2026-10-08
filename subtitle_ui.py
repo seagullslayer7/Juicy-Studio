@@ -41,6 +41,47 @@ def command(parent, text, callback, tip):
     return item
 
 
+class SubtitleVideoExportDialog(QDialog):
+    def __init__(self,parent):
+        super().__init__(parent)
+        self.setWindowTitle('Export video with subtitles'); self.setMinimumWidth(560)
+        layout=QVBoxLayout(self); layout.setContentsMargins(20,20,20,20); layout.setSpacing(14)
+        form=QFormLayout(); form.setSpacing(12); layout.addLayout(form)
+        video=QLabel(Path(parent.video_path).name); video.setWordWrap(True); video.setToolTip(parent.video_path)
+        form.addRow('Video',video)
+        self.source=parent.combo()
+        self.source.addItem('Existing subtitle file','file')
+        if parent.doc['cues']:
+            self.source.addItem('Source text in the editor','source')
+            self.source.addItem('Translation in the editor','translation')
+        self.source.setToolTip('Use a separate subtitle file without changing the current editor, or export an editor track.')
+        form.addRow('Subtitle source',self.source)
+        self.file_row=QWidget(); row=QHBoxLayout(self.file_row); row.setContentsMargins(0,0,0,0)
+        self.file=QLineEdit(); self.file.setPlaceholderText('Choose SRT, VTT, ASS, or SSA…')
+        self.file.setToolTip('UTF-8 subtitle file. ASS/SSA styling and positioning are preserved; install any fonts used by the file.')
+        row.addWidget(self.file,1); row.addWidget(action('Browse…',self.browse,'Choose an existing subtitle file'))
+        form.addRow('Subtitle file',self.file_row)
+        self.format=parent.combo(); self.format.addItem('MP4 · permanent subtitles','mp4'); self.format.addItem('MKV · switchable subtitle track','mkv')
+        form.addRow('Output',self.format)
+        note=QLabel('MP4 burns the subtitles into the picture. MKV keeps them switchable and copies the original video and audio.\n\nExisting ASS/SSA files keep their own styling; SRT/VTT use their supported formatting. Editor Style settings do not replace the selected file’s appearance. Your editor and original files stay unchanged.')
+        note.setWordWrap(True); note.setObjectName('muted'); layout.addWidget(note)
+        self.source.currentIndexChanged.connect(lambda:self.file_row.setEnabled(self.source.currentData()=='file'))
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText('Choose output…')
+        buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def browse(self):
+        path,_=QFileDialog.getOpenFileName(self,'Choose subtitle file',self.file.text(),'Subtitles (*.srt *.vtt *.ass *.ssa)')
+        if path:self.file.setText(path)
+
+    def accept(self):
+        if self.source.currentData()=='file':
+            path=Path(self.file.text().strip()).expanduser()
+            if not path.is_file() or path.suffix.lower() not in ('.srt','.vtt','.ass','.ssa'):
+                QMessageBox.warning(self,'Choose subtitle file','Choose an existing SRT, VTT, ASS, or SSA file.');return
+        super().accept()
+
+
 class VideoPreview(QGraphicsView):
     def __init__(self, player):
         super().__init__()
@@ -336,7 +377,7 @@ class SubtitleWorkspace(QWidget):
         bottom.addWidget(self.translate_button); bottom.addWidget(self.smart_button)
         self.context_button = command(self,'Scene notes',self.scene_notes,'Set names, terminology, tone, and scene context for Smart translate')
         bottom.addStretch()
-        self.export_button = action('Export…',self.export_menu,'Save subtitle files or create a subtitled MP4 / MKV',True); bottom.addWidget(self.export_button)
+        self.export_button = action('Export…',self.export_menu,'Create a subtitled video from an existing subtitle file or the editor, or save subtitle files',True); bottom.addWidget(self.export_button)
         toolbar.addSpacing(12)
         toolbar.addLayout(bottom, 1)
         wave_tools.addSpacing(10)
@@ -635,7 +676,8 @@ class SubtitleWorkspace(QWidget):
         self.timeline.editable = not busy
         if busy: self.timeline.drag = None
         self.translate_button.setEnabled(not busy and bool(self.doc['cues']) and bool(self.video_path))
-        for widget in (self.smart_button,self.export_button):widget.setEnabled(not busy and bool(self.doc['cues']))
+        self.smart_button.setEnabled(not busy and bool(self.doc['cues']))
+        self.export_button.setEnabled(not busy and bool(self.video_path or self.doc['cues']))
         self.host.sync_menu_actions()
     def toggle_play(self):
         if self.player.playbackState()==QMediaPlayer.PlaybackState.PlayingState:self.player.pause()
@@ -658,10 +700,13 @@ class SubtitleWorkspace(QWidget):
     def sync_pan(self):
         self.pan.blockSignals(True);self.pan.setValue(round(self.timeline.offset/max(.001,self.timeline.duration-self.timeline.span)*10000));self.pan.setEnabled(self.timeline.zoom>1);self.pan.blockSignals(False)
     def export_menu(self):
-        if not self.commit_edit():return
         menu=QMenu(self)
+        movie=menu.addAction('Video with subtitles…',self.export_video_dialog)
+        movie.setEnabled(bool(self.video_path)); movie.setToolTip('Choose an existing subtitle file or an editor track; no transcription required')
+        menu.addSeparator()
         for track,label in [('source','Source'),('translation','Translation')]:
             sub=menu.addMenu(label)
+            sub.setEnabled(bool(self.doc['cues']))
             for fmt in ('srt','vtt','ass'):
                 sub.addAction(fmt.upper()+' subtitle file',lambda checked=False,f=fmt,t=track:self.export_file(f,t))
             sub.addSeparator()
@@ -669,6 +714,7 @@ class SubtitleWorkspace(QWidget):
             sub.addAction('MKV · switchable subtitles',lambda checked=False,t=track:self.export_movie('mkv',t))
         menu.exec(self.export_button.mapToGlobal(self.export_button.rect().bottomLeft()))
     def export_file(self,fmt,track):
+        if not self.commit_edit():return
         try:text=export_text(self.doc,fmt,track)
         except ValueError as exc:self.error(exc);return
         path,_=QFileDialog.getSaveFileName(self,'Export subtitle file',str(self.root/'outputs'/f'subtitles.{track}.{fmt}'),f'{fmt.upper()} (*.{fmt})')
@@ -678,6 +724,7 @@ class SubtitleWorkspace(QWidget):
             try:path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,encoding='utf-8-sig');self.host.set_status('Subtitle file exported.')
             except OSError as exc:self.error(exc)
     def export_movie(self,fmt,track):
+        if not self.commit_edit():return
         if not self.video_path:self.error('Add the matching video before exporting a video file.');return
         try:export_text(self.doc,'ass',track)
         except ValueError as exc:self.error(exc);return
@@ -686,3 +733,20 @@ class SubtitleWorkspace(QWidget):
         if not path.lower().endswith('.'+fmt):path+='.'+fmt
         if Path(path).exists():self.error('Choose a new filename. Subtitle video exports do not replace existing files.');return
         self.submit('subtitle_export',output=path,format=fmt,track=track)
+
+    def export_video_dialog(self):
+        if self.busy:return
+        if not self.video_path:self.error('Add the matching video before exporting.');return
+        dialog=SubtitleVideoExportDialog(self)
+        if not dialog.exec():return
+        source,fmt=dialog.source.currentData(),dialog.format.currentData()
+        if source!='file':
+            self.export_movie(fmt,source);return
+        subtitle=str(Path(dialog.file.text().strip()).expanduser().resolve())
+        path,_=QFileDialog.getSaveFileName(self,'Export subtitled video',str(self.root/'outputs'/f'{Path(self.video_path).stem}-subtitled.{fmt}'),f'{fmt.upper()} (*.{fmt})')
+        if not path:return
+        if not path.lower().endswith('.'+fmt):path+='.'+fmt
+        if Path(path).exists():self.error('Choose a new filename. Subtitle video exports do not replace existing files.');return
+        # File export is independent of incomplete/unsaved editor text.
+        self.job_requested.emit(dict(action='subtitle_export',video=self.video_path,config=dict(self.host.config),
+            subtitle_file=subtitle,output=path,format=fmt))

@@ -121,7 +121,7 @@ future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-81 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+85 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -168,3 +168,21 @@ now leaves the window open with an explanation instead of crashing at startup;
 the test suite covers that failure path, and the native UI checks cover retry.
 
 Backend: https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan
+
+## Existing subtitle files
+
+The Subtitles & Translation workspace also offers **Export → Video with
+subtitles…**. Choose an existing UTF-8 SRT, VTT, ASS, or SSA file, or an editor
+track. Export stays available with a video loaded even when the transcript is
+empty. External-file export does not replace or modify the editor document.
+
+MP4 burns subtitles into the picture; MKV adds a switchable subtitle track and
+copies the original video/audio. External subtitle files are passed through
+without stripping their formatting. ASS/SSA styles and positioning are retained;
+fonts used by external files need to be installed. Editor Style settings apply
+to editor tracks, not external files. Audio retains the existing subtitle-export
+behavior: compatible MP4 audio is copied; incompatible audio is re-encoded.
+
+Verification covers all four file extensions in MP4 and MKV, ASS color/position
+tags, unchanged compatible audio, MKV video stream copying, invalid files, empty
+editor export, and preserving in-progress editor text.
