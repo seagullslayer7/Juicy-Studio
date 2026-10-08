@@ -105,6 +105,14 @@ class EnhanceWorkspace(QWidget):
         self.face_restore.setToolTip('Optional live-action face restoration, separate from the whole-frame model. Downloads about 333 MiB once. Runs locally on CUDA or, with Vulkan upscaling, on CPU (slower). Does not restore hands or bodies. Small/profile/occluded faces may be skipped; frame-by-frame results may flicker.')
         self.face_strength=Spin();self.face_strength.setDecimals(0);self.face_strength.setRange(0,100);self.face_strength.setValue(35);self.face_strength.setSuffix('%')
         self.face_strength.setToolTip('Blend restored faces into the whole-frame result. Start around 25–40%. Higher strength can alter facial features. 0% bypasses face processing and its model download. Fixed model noise reduces random variation, but does not guarantee temporal consistency.')
+        self.texture_recovery=Spin();self.texture_recovery.setDecimals(0);self.texture_recovery.setRange(0,100);self.texture_recovery.setValue(35);self.texture_recovery.setSuffix('%')
+        self.texture_recovery.setToolTip('Recover some visible source texture lost during restoration, across skin, hair, clothing, and the rest of the frame. Bounded luminance corrections avoid simple blanket sharpening. Cannot recover absent detail; high settings may restore noise or compression texture too. 0% disables it.')
+        self.face_texture=Spin();self.face_texture.setDecimals(0);self.face_texture.setRange(0,100);self.face_texture.setValue(50);self.face_texture.setSuffix('%')
+        self.face_texture.setToolTip('Preserve fine texture from the whole-frame result when blending in the fixed 512-pixel GFPGAN face, including at 100% face strength. Regions with strong structural disagreement are excluded. This is texture retention, not a higher-resolution face model.')
+        self.source_blend=Spin();self.source_blend.setDecimals(0);self.source_blend.setRange(0,100);self.source_blend.setValue(15);self.source_blend.setSuffix('%')
+        self.source_blend.setToolTip('Mix resized original pixels into the final result, including restored faces. Higher values retain more of the original appearance and reduce AI changes. 0% keeps the processed result; 100% returns the conventionally resized source. AI processing still runs.')
+        self.structure_protection=Combo();self.structure_protection.addItem('On · reduce large changes','on');self.structure_protection.addItem('Off','off')
+        self.structure_protection.setToolTip('Increase the source blend locally where the result makes large changes to broad luminance structure. Helps limit altered edges and shapes; cannot recognize or guarantee correct hands, anatomy, faces, or objects. Review a moving preview, particularly at high face strength.')
         self.denoise=Combo()
         for label,value in [('Low · keep texture','0.15'),('Off','0'),('Medium','0.5'),('Strong · smoother','1')]:self.denoise.addItem(label,value)
         self.denoise.setToolTip('CUDA Balanced live-action model only. Lower denoising retains more original texture; strong denoising can make clean footage look soft. This does not affect the Detail or Animation model.')
@@ -147,7 +155,8 @@ class EnhanceWorkspace(QWidget):
         groups = [('Enhancement',[('Content',self.model),('AI backend',self.backend),('AI graphics card',self.gpu),
                                  ('Whole-frame restoration',self.restoration),('Output resolution',self.resolution),('Denoising',self.denoise)]),
                   ('Color',[('Color handling',self.colors),('Source color space',self.source_color)]),
-                  ('People',[('Face restoration',self.face_restore),('Face strength',self.face_strength)]),
+                  ('Detail',[('Source texture recovery',self.texture_recovery),('Source blend',self.source_blend),('Protect source structure',self.structure_protection)]),
+                  ('People',[('Face restoration',self.face_restore),('Face strength',self.face_strength),('Keep face texture',self.face_texture)]),
                   ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
                                ('Encoding speed',self.preset)]),
                   ('Compression',[('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate)]),
@@ -235,7 +244,9 @@ class EnhanceWorkspace(QWidget):
     def settings(self):
         values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution','colors','source_color','denoise')}
         values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData(),
-            face_restore=self.face_restore.currentData() if self.model.currentData()=='live' else 'off',face_strength=str(int(self.face_strength.value())))
+            face_restore=self.face_restore.currentData() if self.model.currentData()=='live' else 'off',face_strength=str(int(self.face_strength.value())),
+            texture_recovery=str(int(self.texture_recovery.value())),face_texture=str(int(self.face_texture.value())),
+            source_blend=str(int(self.source_blend.value())),structure_protection=self.structure_protection.currentData())
         return values
 
     def populate_encoders(self):
@@ -476,6 +487,7 @@ class EnhanceWorkspace(QWidget):
         self.denoise.setEnabled(self.uses_cuda() and not animation and self.restoration.currentData()=='balanced')
         self.face_restore.setEnabled(not animation)
         self.face_strength.setEnabled(not animation and self.face_restore.currentData()=='gfpgan')
+        self.face_texture.setEnabled(not animation and self.face_restore.currentData()=='gfpgan' and self.face_strength.value()>0)
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

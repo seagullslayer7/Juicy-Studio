@@ -86,7 +86,7 @@ def face_mask():
     return Image.fromarray(np.rint(weight*255).astype(np.uint8))
 
 
-def composite_face(background,restored,matrix,source_size,strength,preserve_colors=True):
+def composite_face(background,restored,matrix,source_size,strength,preserve_colors=True,texture=0):
     """Warp a feathered face into the output; pixels outside its mask are untouched."""
     if strength<=0:return background
     sx,sy=background.width/source_size[0],background.height/source_size[1]
@@ -101,7 +101,13 @@ def composite_face(background,restored,matrix,source_size,strength,preserve_colo
     size=(right-left,bottom-top)
     restored=restored.transform(size,Image.Transform.AFFINE,coefficients,Image.Resampling.BICUBIC)
     mask=face_mask().transform(size,Image.Transform.AFFINE,coefficients,Image.Resampling.BILINEAR)
-    base=np.asarray(background.crop((left,top,right,bottom)),dtype=np.float32)
+    base_image=background.crop((left,top,right,bottom))
+    if texture>0:
+        from enhance_texture import recover_texture
+        # GFPGAN emits 512px faces. Preserve finer texture from the full-frame
+        # result where upsampling that fixed face would otherwise erase it.
+        restored=recover_texture(restored,base_image,texture,radius=max(1.,min(4.,max(size)/512)))
+    base=np.asarray(base_image,dtype=np.float32)
     result=np.asarray(restored,dtype=np.float32)
     if preserve_colors:
         result=base+((result-base)@np.array([.2126,.7152,.0722],np.float32))[...,None]
@@ -112,7 +118,7 @@ def composite_face(background,restored,matrix,source_size,strength,preserve_colo
 
 
 class FaceRestorer:
-    def __init__(self,root,device,strength,emit,preserve_colors=True):
+    def __init__(self,root,device,strength,emit,preserve_colors=True,texture=0):
         import torch
         from enhance_cuda import ensure_weights
         from enhance_face_network import GFPGANv1Clean
@@ -121,6 +127,7 @@ class FaceRestorer:
         emit('stage',message='Loading optional face restoration · GFPGAN v1.4',phase='load',percent=0)
         self.torch=torch;self.device=torch.device(device);self.strength=strength
         self.preserve_colors=preserve_colors
+        self.texture=texture
         self.detector=FaceDetector(folder/'face_detection_yunet_2023mar.onnx')
         self.net=GFPGANv1Clean(out_size=512,num_style_feat=512,channel_multiplier=2,
             fix_decoder=False,num_mlp=8,input_is_latent=True,different_w=True,narrow=1,sft_half=True)
@@ -144,7 +151,7 @@ class FaceRestorer:
                 result=self.net(tensor,return_rgb=False,randomize_noise=False)[0]
                 if not torch.isfinite(result).all():raise RuntimeError('Face restoration produced invalid pixels. Turn it off and retry.')
                 result=((result[0].clamp(-1,1)+1)*127.5).round().byte().permute(1,2,0).cpu().numpy()
-            enhanced=composite_face(enhanced,Image.fromarray(result),matrix,source.size,self.strength,self.preserve_colors)
+            enhanced=composite_face(enhanced,Image.fromarray(result),matrix,source.size,self.strength,self.preserve_colors,self.texture)
             restored_count+=1
         self.faces_restored+=restored_count
         self.frames_with_faces+=bool(restored_count)

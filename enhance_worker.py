@@ -122,6 +122,10 @@ def probe(video):
 
 
 def validate_settings(settings):
+    for key in ('texture_recovery','face_texture','source_blend'):
+        value=float(settings.get(key,0))
+        if not math.isfinite(value) or not 0<=value<=100:raise ValueError('Texture recovery and source blend must be between 0 and 100%.')
+    if settings.get('structure_protection','off') not in ('on','off'):raise ValueError('Choose On or Off for source structure protection.')
     if settings.get('face_restore','off') not in ('off','gfpgan'):raise ValueError('Choose Off or GFPGAN face restoration.')
     face_strength=float(settings.get('face_strength',35))
     if not math.isfinite(face_strength) or not 0<=face_strength<=100:raise ValueError('Face strength must be between 0 and 100%.')
@@ -294,10 +298,14 @@ def enhance(job, emit):
             engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
         face_restorer=None
         settings=job.get('settings',{})
+        texture_amount=float(settings.get('texture_recovery',0))/100
+        source_blend=float(settings.get('source_blend',0))/100
+        structure_protection=settings.get('structure_protection','off')=='on'
+        from enhance_texture import recover_source_texture,protect_source_structure
         if settings.get('face_restore','off')=='gfpgan' and float(settings.get('face_strength',35))>0:
             from enhance_people import FaceRestorer
             face_restorer=FaceRestorer(ROOT,enhancer.device if enhancer else 'cpu',float(settings.get('face_strength',35))/100,emit,
-                preserve_colors=settings.get('colors','source')=='source')
+                preserve_colors=settings.get('colors','source')=='source',texture=float(settings.get('face_texture',0))/100)
             engine_label+=' · faces '+('CUDA' if enhancer else 'CPU')
         emit('stage', message=f'Enhancing · {engine_label}', phase='enhance', percent=0)
         with ExitStack() as stack:
@@ -328,8 +336,11 @@ def enhance(job, emit):
                     raw = read_frame(decoder.stdout,width*height*3)
                     if not raw: break
                     enhanced_raw=enhancer.process(raw)
-                    if face_restorer:
-                        restored=face_restorer.process(Image.frombytes('RGB',(width,height),raw),Image.frombytes('RGB',dimensions,enhanced_raw))
+                    if face_restorer or texture_amount>0 or source_blend>0 or structure_protection:
+                        source_image=Image.frombytes('RGB',(width,height),raw)
+                        restored=recover_source_texture(Image.frombytes('RGB',dimensions,enhanced_raw),source_image,texture_amount)
+                        if face_restorer:restored=face_restorer.process(source_image,restored)
+                        restored=protect_source_structure(restored,source_image,source_blend,structure_protection)
                         enhanced_raw=restored.tobytes()
                     writer.stdin.write(enhanced_raw)
                     count += 1
@@ -363,8 +374,12 @@ def enhance(job, emit):
                         if image.size != dimensions: image = image.resize(dimensions,Image.Resampling.LANCZOS)
                         if job.get('settings',{}).get('colors','source')=='source':
                             with Image.open(inputs/name) as original: image=preserve_chroma_array(image,original.convert('RGB'))
-                        if face_restorer:
-                            with Image.open(inputs/name) as original:image=face_restorer.process(original.convert('RGB'),image)
+                        if face_restorer or texture_amount>0 or source_blend>0 or structure_protection:
+                            with Image.open(inputs/name) as original:
+                                original=original.convert('RGB')
+                                image=recover_source_texture(image,original,texture_amount)
+                                if face_restorer:image=face_restorer.process(original,image)
+                                image=protect_source_structure(image,original,source_blend,structure_protection)
                         writer.stdin.write(image.tobytes())
                     (inputs/name).unlink(); (results/name).unlink()
                     count += 1

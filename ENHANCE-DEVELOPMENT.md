@@ -130,6 +130,38 @@ identical frames, but this is not a temporally trained video restorer; motion,
 occlusions, and changing detections can still cause flicker. Face restoration
 does not repair hands or bodies; those depend on the whole-frame model.
 
+### Texture and source fidelity
+
+The **Detail** tab adds three controls applied to both CUDA and Vulkan output:
+
+- **Source texture recovery**, initially 35%, restores a bounded amount of visible
+  source luminance texture that the model attenuates. It rejects tiny residuals,
+  strong edges, and areas with substantial structural disagreement. It does not
+  invent reliable skin pores, hair strands, or body detail absent from the source.
+  High strengths may also retain compression artifacts or noise.
+- **Source blend**, initially 15%, mixes the resized original into the final
+  picture after all restoration passes. Increase it to retain more of the original
+  appearance. At 100% the picture is the bicubic-resized original, although AI
+  processing still runs.
+- **Protect source structure**, initially On, increases that blend locally where
+  broad luminance structure changes substantially. This reduces large changes;
+  it is not an anatomy detector and cannot guarantee correct hands, faces, body
+  shapes, or other objects. Small distortions can remain, and source blending may
+  soften detail or expose doubled edges where a model has shifted features.
+
+In **People**, **Keep face texture** starts at 50%. It retains compatible fine
+texture from the whole-frame result when compositing GFPGAN's fixed 512-pixel face,
+including at 100% face strength. It does not increase the face model's resolution.
+The final source blend/protection also applies to restored faces. Use lower face
+strength and compare a moving preview if features change. These controls do not
+provide temporal stabilization or guarantee flicker-free motion.
+
+These passes use the existing SciPy dependency and need no additional model
+download. They add CPU work: a local single-frame measurement was about 0.21 s at
+1080p and 0.90 s at 4K, excluding model inference and encoding. Performance varies
+by PC. Setting texture recovery/source blend to 0% and protection Off bypasses
+the full-frame fidelity passes; face texture has its own strength control.
+
 ### Color handling
 
 The **Color** tab defaults to Preserve source colors: retain the resized
@@ -251,6 +283,16 @@ tags, and unchanged retained audio packet data. A preview trim may omit AAC
 boundary packets. Repeating an identical portrait produces matching face output;
 blank frames remain unchanged by the face pass. Real motion quality and AMD
 hardware still require wider validation.
+
+Texture/fidelity validation adds eight tests for bypass and full-source output,
+bounded recovery, flat/noisy input, disagreement rejection, reduction of an
+artificial structural change, retention of fine detail, face compositing at 100%
+strength, and invalid settings (105 automated tests total). CUDA and Vulkan
+six-frame exports also pass with texture recovery, source protection, and 100%
+GFPGAN enabled. GUI controls fit at 1280×720, 1500×950, and 1920×1080. The public
+full-body reference comparison shows a modest fidelity improvement from source
+blending; it does not establish anatomical correctness or recovery of missing
+texture across real footage.
 
 ## Existing subtitle files
 
