@@ -5,6 +5,9 @@ import urllib.request
 from uuid import uuid4
 
 WEIGHTS = {
+    'BSRGAN.pth': ('https://github.com/cszn/KAIR/releases/download/v1.0/BSRGAN.pth', 67046751, '5d505a0766160921e0388d76e1ddf08cb114303990f9080432bf2b1c988b1c54'),
+    'GFPGANv1.4.pth': ('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth', 348632874, 'e2cd4703ab14f4d01fd1383a8a8b266f9a5833dacee8e6a79d3bf21a1b6be5ad'),
+    'face_detection_yunet_2023mar.onnx': ('https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx', 232589, '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'),
     'realesr-animevideov3.pth': ('v0.2.5.0', 2504012, 'b8a8376811077954d82ca3fcf476f1ac3da3e8a68a4f4d71363008000a18b75d'),
     'realesr-general-x4v3.pth': ('v0.2.5.0', 4885111, '8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292'),
     'realesr-general-wdn-x4v3.pth': ('v0.2.5.0', 4885111, '1641f8c4464b9f097c9fdda5589273713f67cf59f3d909e0bd688f0cee269dca'),
@@ -17,6 +20,8 @@ def model_choice(profile, width, height, output, content='live'):
     if content == 'animation': return 4, ('realesr-animevideov3.pth',)
     if profile == 'balanced':
         return 4, ('realesr-general-x4v3.pth', 'realesr-general-wdn-x4v3.pth')
+    if profile == 'bsrgan': return 4, ('BSRGAN.pth',)
+    if profile == 'detail4': return 4, ('RealESRGAN_x4plus.pth',)
     if profile != 'detail': raise ValueError('Choose Balanced or Detail restoration.')
     scale = 2 if max(output[0]/width, output[1]/height) <= 2 else 4
     return scale, (f'RealESRGAN_x{scale}plus.pth',)
@@ -35,7 +40,7 @@ def ensure_weights(folder, names, emit):
         if verified(target, size, digest): continue
         partial = target.with_name(name+'.'+uuid4().hex+'.partial')
         try:
-            url = f'https://github.com/xinntao/Real-ESRGAN/releases/download/{tag}/{name}'
+            url = tag if tag.startswith('https://') else f'https://github.com/xinntao/Real-ESRGAN/releases/download/{tag}/{name}'
             emit('stage', message=f'Downloading AI model · {name}', phase='load', percent=0)
             with urllib.request.urlopen(url, timeout=60) as response, partial.open('wb') as stream:
                 count = 0
@@ -74,6 +79,7 @@ class CudaEnhancer:
             states.append(checkpoint.get('params_ema', checkpoint.get('params', checkpoint)))
         # Blend the official strong/weak weights at the selected denoise strength.
         state = states[0] if len(states) == 1 else {k:denoise*states[0][k]+(1-denoise)*states[1][k] for k in states[0]}
+        if profile == 'bsrgan' and content == 'live': state = bsrgan_parameters(state)
         net.load_state_dict(state, strict=True)
         self.net = net.eval().requires_grad_(False).to(device=self.device, dtype=torch.float16, memory_format=torch.channels_last)
         free, _ = torch.cuda.mem_get_info(self.device)
@@ -123,3 +129,10 @@ class CudaEnhancer:
                 result=original+((result-original)*weights).sum(dim=1,keepdim=True)
             if not torch.isfinite(result).all(): raise RuntimeError('AI output contains invalid pixels; processing stopped to protect the export.')
             return result.clamp_(0,1).mul_(255).round_().to(torch.uint8).squeeze(0).permute(1,2,0).contiguous().cpu().numpy().tobytes()
+
+
+def bsrgan_parameters(state):
+    """BSRGAN uses the same x4 RRDB topology with different parameter names."""
+    names={'RRDB_trunk':'body','RDB1':'rdb1','RDB2':'rdb2','RDB3':'rdb3',
+           'trunk_conv':'conv_body','upconv1':'conv_up1','upconv2':'conv_up2','HRconv':'conv_hr'}
+    return {'.'.join(names.get(part,part) for part in key.split('.')):value for key,value in state.items()}

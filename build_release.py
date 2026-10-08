@@ -10,7 +10,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 VERSION = json.loads((ROOT/'release-manifest.json').read_text(encoding='utf-8'))['version']
-PAYLOAD_FILES = ['JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcription.py', 'enhance_ui.py', 'enhance_worker.py', 'enhance_resolution.py', 'enhance_quality.py', 'enhance_cuda.py', 'enhance_networks.py', 'video_encoding.py',
+PAYLOAD_FILES = ['JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcription.py', 'enhance_ui.py', 'enhance_worker.py', 'enhance_resolution.py', 'enhance_quality.py', 'enhance_cuda.py', 'enhance_networks.py', 'enhance_people.py', 'enhance_face_network.py', 'video_encoding.py',
     'processing_time.py', 'appearance.py', 'audio_timeline.py', 'audio_waveform.py', 'ui_icons.py', 'languages.py', 'subtitle_document.py', 'subtitle_worker.py', 'subtitle_ui.py', 'translation.py', 'runtime_paths.py', 'bootstrap.py', 'setup_wizard.py', 'setup_verify.py',
     'install_runtime.py', 'model_download.py', 'config.json', 'banned_words.txt',
     'banned_phrases.txt', 'beep.mp3', 'release-manifest.json', 'requirements-cpu.lock',

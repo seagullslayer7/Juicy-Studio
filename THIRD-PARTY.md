@@ -68,3 +68,29 @@ Optional CUDA weights download directly from the official Real-ESRGAN releases
 sizes, and SHA-256 digests are pinned in `enhance_cuda.py`. Weights are verified
 before loading and are not bundled in release installers. CUDA processing uses
 the existing private PyTorch environment and its retained license notices.
+
+Optional people-restoration components:
+
+- GFPGAN v1.4 weights from TencentARC's official v1.3.0 release. The clean
+  GFPGAN/StyleGAN2 architecture files at commit
+  `7552a7791caad982045a7bbe5634bbf1cd5c8679` are combined in
+  `enhance_face_network.py`. Registry/training initialization dependencies are
+  removed, external decoder loading is disabled, and inference uses fixed model
+  noise. See `licenses/GFPGAN-LICENSE.txt` for Apache-2.0 and included notices.
+  https://github.com/TencentARC/GFPGAN
+- YuNet face detector from OpenCV Zoo commit
+  `47534e27c9851bb1128ccc0102f1145e27f23f98`, March 2023 ONNX model. MIT license
+  retained in `licenses/YuNet-LICENSE.txt`. Detection tensor decoding in
+  `enhance_people.py` uses the documented FaceDetectorYN output format; inference
+  runs through the existing ONNX Runtime dependency.
+  https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet
+- BSRGAN weights from the author's KAIR v1.0 release. Parameters are renamed to
+  the equivalent existing BasicSR RRDB x4 topology; no BSRGAN architecture source
+  is bundled. See `licenses/BSRGAN-LICENSE.txt` (Apache-2.0).
+  https://github.com/cszn/BSRGAN and https://github.com/cszn/KAIR/releases/tag/v1.0
+
+Model URLs, byte counts, and SHA-256 digests are pinned in `enhance_cuda.py`.
+Weights download only when their corresponding optional feature is selected.
+They are not included in installer/source distributions. Checkpoints load with
+PyTorch's weights-only loader. Whole-frame upscaling and face restoration are
+separate stages; neither guarantees faithful reconstruction of missing detail.

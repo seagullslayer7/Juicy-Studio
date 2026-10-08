@@ -97,6 +97,39 @@ selection and AV1 on AMD, Intel, and CPU in addition to NVIDIA.
 
 ## Implemented
 
+### People and whole-frame detail
+
+For live action on NVIDIA CUDA, **Whole-frame restoration** offers:
+
+- **Balanced** for speed and adjustable denoising.
+- **Detail** for the existing scale-aware Real-ESRGAN model.
+- **Detail · full 4× model** to compare the native 4× model even for smaller targets.
+- **Whole frame · BSRGAN** as an alternative trained restoration model for the
+  entire picture, including body detail, hair, hands, clothing, and surroundings.
+  It downloads about 64 MiB once. This is not a body/anatomy-specific model and
+  cannot guarantee accurate recovery of missing texture or anatomy. These heavier
+  models can be substantially slower than Balanced. Vulkan retains its existing
+  whole-frame Detail model.
+
+The separate **People** tab adds **GFPGAN** for detected faces. It is off by default;
+start with 25–40% strength and compare a moving preview. The first use downloads
+about 333 MiB of verified GFPGAN/YuNet weights. Detection runs on CPU; face
+restoration uses the selected CUDA card or CPU alongside Vulkan upscaling. CPU
+restoration is slower. It uses existing NumPy, Pillow, ONNX Runtime, and PyTorch;
+no new environment or pip installation is needed. Models stay in
+`tools/enhance/torch-models` and are reused after integrity checks.
+
+Face restoration is blended into feathered face regions after whole-frame
+processing. Source-color preservation also applies to this pass. A 0% strength
+bypasses both face processing and the optional downloads. Low-confidence, tiny,
+or badly aligned faces are skipped (including eye separation below 12 source
+pixels). The result reports how many frames received face restoration; frames
+without suitable faces still receive whole-frame restoration. Faces may change
+appearance at high strengths. Fixed model noise avoids random noise between
+identical frames, but this is not a temporally trained video restorer; motion,
+occlusions, and changing detections can still cause flicker. Face restoration
+does not repair hands or bodies; those depend on the whole-frame model.
+
 ### Color handling
 
 The **Color** tab defaults to Preserve source colors: retain the resized
@@ -149,7 +182,7 @@ future work. Do not label this a finished 3.1 release.
 
 ## Verification
 
-90 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
+97 automated regression/boundary tests pass with GUI dependencies installed. A real six-frame synthetic clip was
 enhanced using animation on Vulkan device 1 and live-action on device 0, with
 320×180 output from 160×90 input. MP4 and MKV duration/dimensions and unchanged
 audio packet hashes were checked. Native Qt checks cover actual preview creation,
@@ -205,6 +238,19 @@ targeted 8.7 Mbps for 720p/59fps live action at 1440p (the prior export was
 size control, not equivalent perceived quality or guaranteed full-video sizes.
 Restoration quality still needs scene-by-scene review; AI cannot recover a known
 ground truth from missing source detail.
+
+People restoration checks cover similarity alignment, tiny/invalid face rejection,
+duplicate suppression, strength/color preservation, feathered compositing at
+nonuniform output ratios, model selection, and GUI backend controls. Actual model
+tests use public portrait and full-body sample images, including a degraded
+reference comparison. Full 4× Detail and BSRGAN reduced pixel error in the tested
+body/clothing crop relative to Balanced; this is not a general quality ranking.
+A six-frame panning portrait exports successfully using CUDA/BSRGAN/GFPGAN and
+Vulkan/CPU-GFPGAN, with six restored-face frames, correct output dimensions/color
+tags, and unchanged retained audio packet data. A preview trim may omit AAC
+boundary packets. Repeating an identical portrait produces matching face output;
+blank frames remain unchanged by the face pass. Real motion quality and AMD
+hardware still require wider validation.
 
 ## Existing subtitle files
 

@@ -99,7 +99,12 @@ class EnhanceWorkspace(QWidget):
         for label,value in [('Automatic','auto'),('NVIDIA CUDA','cuda'),('Vulkan · NVIDIA / AMD','vulkan')]: self.backend.addItem(label,value)
         self.backend.setToolTip('Automatic uses CUDA when an NVIDIA runtime is ready; otherwise Vulkan. CUDA keeps animation or live-action models in GPU memory across frames. Video encoding is a separate setting.')
         self.restoration = Combo(); self.restoration.addItem('Balanced · faster','balanced'); self.restoration.addItem('Detail · slower','detail')
-        self.restoration.setToolTip('CUDA live action: Balanced is faster and offers adjustable denoising. Detail is heavier and may restore fine structure better, but can invent texture; it uses native 2× for targets up to 2×. Compare a short preview. More pixels do not guarantee more real detail. Vulkan uses the Detail model.')
+        self.restoration.addItem('Detail · full 4× model','detail4');self.restoration.addItem('Whole frame · BSRGAN','bsrgan')
+        self.restoration.setToolTip('CUDA live action: Balanced is fastest. Detail uses a native 2× model up to 2× enlargement; full 4× always uses the larger-scale model. BSRGAN is an alternative whole-frame model for people, hair, clothing, and scenery—not a dedicated body/anatomy model. Compare previews; none guarantees recovered detail. Vulkan uses its Detail model.')
+        self.face_restore=Combo();self.face_restore.addItem('Off','off');self.face_restore.addItem('GFPGAN · restore detected faces','gfpgan')
+        self.face_restore.setToolTip('Optional live-action face restoration, separate from the whole-frame model. Downloads about 333 MiB once. Runs locally on CUDA or, with Vulkan upscaling, on CPU (slower). Does not restore hands or bodies. Small/profile/occluded faces may be skipped; frame-by-frame results may flicker.')
+        self.face_strength=Spin();self.face_strength.setDecimals(0);self.face_strength.setRange(0,100);self.face_strength.setValue(35);self.face_strength.setSuffix('%')
+        self.face_strength.setToolTip('Blend restored faces into the whole-frame result. Start around 25–40%. Higher strength can alter facial features. 0% bypasses face processing and its model download. Fixed model noise reduces random variation, but does not guarantee temporal consistency.')
         self.denoise=Combo()
         for label,value in [('Low · keep texture','0.15'),('Off','0'),('Medium','0.5'),('Strong · smoother','1')]:self.denoise.addItem(label,value)
         self.denoise.setToolTip('CUDA Balanced live-action model only. Lower denoising retains more original texture; strong denoising can make clean footage look soft. This does not affect the Detail or Animation model.')
@@ -140,8 +145,9 @@ class EnhanceWorkspace(QWidget):
         for value,(label,_) in TARGETS.items(): self.resolution.addItem(label,value)
         self.resolution.setToolTip('Choose 2×/4× source size or fit within 720p, 1080p, 1440p (QHD), or 4K (UHD). Presets follow landscape/portrait orientation, preserve aspect ratio, and round to even pixels without cropping or stretching. A smaller target downscales. Enlargement beyond 4× adds conventional resizing after AI.')
         groups = [('Enhancement',[('Content',self.model),('AI backend',self.backend),('AI graphics card',self.gpu),
-                                 ('Restoration',self.restoration),('Output resolution',self.resolution),('Denoising',self.denoise)]),
+                                 ('Whole-frame restoration',self.restoration),('Output resolution',self.resolution),('Denoising',self.denoise)]),
                   ('Color',[('Color handling',self.colors),('Source color space',self.source_color)]),
+                  ('People',[('Face restoration',self.face_restore),('Face strength',self.face_strength)]),
                   ('Encoding',[('Video codec',self.codec),('Video encoder',self.encoder),('File format',self.container),
                                ('Encoding speed',self.preset)]),
                   ('Compression',[('Rate control',self.rate_control),('Quality · lower is better',self.quality),('Video bitrate',self.bitrate)]),
@@ -154,6 +160,11 @@ class EnhanceWorkspace(QWidget):
                 settings_row.addLayout(column,index//3,index%3); settings_row.setColumnStretch(index%3,1)
                 signal = control.valueChanged if isinstance(control,(QSpinBox,QDoubleSpinBox)) else control.currentIndexChanged
                 signal.connect(lambda *args,c=control:self.settings_changed(c))
+            if title=='People':
+                explanation=QLabel('For body detail, hair, hands, and clothing, compare the whole-frame models on Enhancement. '
+                    'This optional face pass only affects detected faces. Start with low strength; generated detail can change features or flicker in motion.')
+                explanation.setWordWrap(True);explanation.setObjectName('muted')
+                settings_row.addWidget(explanation,1,0,1,3)
             self.settings_tabs.addTab(page,title)
         layout.addWidget(self.settings_panel)
         previews = QHBoxLayout(); previews.setSpacing(12)
@@ -223,7 +234,8 @@ class EnhanceWorkspace(QWidget):
 
     def settings(self):
         values = {key:getattr(self,key).currentData() for key in ('model','backend','restoration','gpu','codec','encoder','rate_control','preset','container','audio_bitrate','audio_channels','resolution','colors','source_color','denoise')}
-        values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData())
+        values.update(quality=str(int(self.quality.value())),bitrate=str(round(self.bitrate.value()*1_000_000)),audio=self.audio_encoder.currentData(),
+            face_restore=self.face_restore.currentData() if self.model.currentData()=='live' else 'off',face_strength=str(int(self.face_strength.value())))
         return values
 
     def populate_encoders(self):
@@ -319,7 +331,7 @@ class EnhanceWorkspace(QWidget):
             if self.model.currentData() == 'animation': profile = 'Animation video'
             else:
                 if self.restoration.currentData() == 'detail' and max(output[0]/width,output[1]/height) <= 2: scale=2
-                profile = 'Balanced' if self.restoration.currentData() == 'balanced' else 'Detail'
+                profile = {'balanced':'Balanced','detail':'Detail','detail4':'Detail full 4×','bsrgan':'BSRGAN whole frame'}[self.restoration.currentData()]
             self.hint.setText(f'CUDA · {profile} · native {scale}× AI, resized to target · first use downloads verified model weights. Preview to compare detail and texture.')
             return
         ratio = max(output[0]/width,output[1]/height)
@@ -388,6 +400,9 @@ class EnhanceWorkspace(QWidget):
                 else:estimate='Export size: '+size_text(data['output_bytes'])
                 if data.get('target_bitrate'):estimate+=f" · Video target {int(data['target_bitrate'])/1e6:.1f} Mbps"
                 self.size_hint.setText(estimate);self.size_hint.setToolTip(data.get('color_note',''))
+            if data.get('face_restoration'):
+                faces=f"Faces restored in {data['face_frames']}/{data['frames']} frames." if data.get('face_frames') else 'No suitable faces detected; whole-frame restoration still applied.'
+                self.size_hint.setText(self.size_hint.text()+' · '+faces)
             self.host.set_status('Preview ready. Play both panels to compare the same section.')
         if data['type'] == 'enhance_exported':
             self.host.last_output = data['output']; self.host.open_result_btn.setEnabled(True)
@@ -459,6 +474,8 @@ class EnhanceWorkspace(QWidget):
         self.restoration.blockSignals(False)
         self.restoration.setEnabled(self.uses_cuda() and not animation)
         self.denoise.setEnabled(self.uses_cuda() and not animation and self.restoration.currentData()=='balanced')
+        self.face_restore.setEnabled(not animation)
+        self.face_strength.setEnabled(not animation and self.face_restore.currentData()=='gfpgan')
         self.settings_panel.setEnabled(not busy)
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)

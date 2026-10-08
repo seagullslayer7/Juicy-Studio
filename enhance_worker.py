@@ -122,11 +122,15 @@ def probe(video):
 
 
 def validate_settings(settings):
+    if settings.get('face_restore','off') not in ('off','gfpgan'):raise ValueError('Choose Off or GFPGAN face restoration.')
+    face_strength=float(settings.get('face_strength',35))
+    if not math.isfinite(face_strength) or not 0<=face_strength<=100:raise ValueError('Face strength must be between 0 and 100%.')
+    if settings.get('face_restore','off')!='off' and settings.get('model','animation')!='live':raise ValueError('Face restoration is available for live-action footage only.')
     if settings.get('source_color','auto') not in ('auto','bt601','bt709'):raise ValueError('Unsupported source color matrix.')
     if settings.get('colors','source') not in ('source','ai'):raise ValueError('Choose Source colors or AI colors.')
     if str(settings.get('denoise','0.15')) not in ('0','0.15','0.5','1'):raise ValueError('Unsupported denoising strength.')
     if settings.get('backend','auto') not in ('auto','cuda','vulkan'): raise ValueError('Choose a supported AI backend.')
-    if settings.get('restoration','balanced') not in ('balanced','detail'): raise ValueError('Choose Balanced or Detail restoration.')
+    if settings.get('restoration','balanced') not in ('balanced','detail','detail4','bsrgan'): raise ValueError('Choose a supported restoration model.')
     if settings.get('resolution', '2x') not in TARGETS: raise ValueError('Choose a supported output resolution.')
     model = settings.get('model', 'animation')
     if model not in MODELS: raise ValueError('Choose Animation or Live action.')
@@ -245,6 +249,8 @@ def enhance(job, emit):
     if output.suffix.lower() not in ('.mp4', '.mkv'): raise ValueError('Choose an MP4 or MKV output.')
     model, gpu, quality, encoder = validate_settings(job.get('settings', {}))
     backend = select_backend(job.get('settings', {}))
+    if backend=='vulkan' and job.get('settings',{}).get('restoration') in ('detail4','bsrgan'):
+        raise ValueError('This whole-frame model requires NVIDIA CUDA. Choose Detail on Vulkan.')
     if backend == 'vulkan' and not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
     encoding = export_settings(job.get('settings', {}))
     info = probe(video)
@@ -286,6 +292,13 @@ def enhance(job, emit):
             engine_label = enhancer.name
         else:
             engine_label = 'Vulkan · '+('Animation' if model == 'animation' else 'Detail model')
+        face_restorer=None
+        settings=job.get('settings',{})
+        if settings.get('face_restore','off')=='gfpgan' and float(settings.get('face_strength',35))>0:
+            from enhance_people import FaceRestorer
+            face_restorer=FaceRestorer(ROOT,enhancer.device if enhancer else 'cpu',float(settings.get('face_strength',35))/100,emit,
+                preserve_colors=settings.get('colors','source')=='source')
+            engine_label+=' · faces '+('CUDA' if enhancer else 'CPU')
         emit('stage', message=f'Enhancing · {engine_label}', phase='enhance', percent=0)
         with ExitStack() as stack:
             decode_log = stack.enter_context((scratch/'decode.log').open('w+'))
@@ -314,7 +327,11 @@ def enhance(job, emit):
                 if enhancer is not None:
                     raw = read_frame(decoder.stdout,width*height*3)
                     if not raw: break
-                    writer.stdin.write(enhancer.process(raw))
+                    enhanced_raw=enhancer.process(raw)
+                    if face_restorer:
+                        restored=face_restorer.process(Image.frombytes('RGB',(width,height),raw),Image.frombytes('RGB',dimensions,enhanced_raw))
+                        enhanced_raw=restored.tobytes()
+                    writer.stdin.write(enhanced_raw)
                     count += 1
                     # Frame-level CUDA inference keeps weights resident and avoids PNG round trips.
                     if time.monotonic()-last_report >= .5 or count == 1:
@@ -346,6 +363,8 @@ def enhance(job, emit):
                         if image.size != dimensions: image = image.resize(dimensions,Image.Resampling.LANCZOS)
                         if job.get('settings',{}).get('colors','source')=='source':
                             with Image.open(inputs/name) as original: image=preserve_chroma_array(image,original.convert('RGB'))
+                        if face_restorer:
+                            with Image.open(inputs/name) as original:image=face_restorer.process(original.convert('RGB'),image)
                         writer.stdin.write(image.tobytes())
                     (inputs/name).unlink(); (results/name).unlink()
                     count += 1
@@ -365,6 +384,7 @@ def enhance(job, emit):
              length=min(length,count/float(Fraction(fps))), width=out_width,height=out_height,frames=count,
              output_bytes=output.stat().st_size,source_bytes=info.get('source_bytes',0),source_duration=info['duration'],
              target_bitrate=encoding['bitrate'],color_note=color_note,
+             face_restoration=bool(face_restorer),face_frames=face_restorer.frames_with_faces if face_restorer else 0,
              encoder=encoder, audio=encoding['audio'], audio_channels=encoding['audio_channels'], backend=backend)
     finally:
         for process in (decoder,writer):
