@@ -14,6 +14,15 @@
 > **Existing subtitle file**, browse to an SRT/VTT/ASS/SSA file, then choose MP4
 > for permanent subtitles or MKV for a switchable track. No transcription is
 > required. ASS/SSA files keep their styling; their fonts must be installed.
+>
+> **Subtitle export controls:** MP4 exports have their own Video and Audio tabs:
+> H.264, H.265/HEVC, or AV1; automatic or specific hardware/CPU encoders;
+> source bitrate, constant quality, or a target Mbps; and original audio or AAC
+> with optional stereo conversion. Defaults match the source codec and video
+> bitrate when available. Missing bitrate falls back to quality 23, so size can
+> still change. Burning subtitles always re-encodes video; MKV copies the
+> original streams and adds a switchable subtitle track. These choices apply to
+> both editor tracks and external files and are remembered during the session.
 
 <p align="center"><img src="assets/readme-banner.svg" alt="JuicyCensor 3.0 — Filter the Juice" width="900"></p>
 

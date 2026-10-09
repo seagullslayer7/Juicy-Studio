@@ -6,12 +6,12 @@ import html
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl, QSizeF, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QAction
+from PySide6.QtCore import Qt, QTimer, QUrl, QSizeF, Signal, QPoint
+from PySide6.QtGui import QColor, QPainter, QPen, QAction, QPolygon
 from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QFormLayout, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QLineEdit, QPlainTextEdit, QTabWidget, QCheckBox, QFileDialog, QMessageBox, QMenu,
-    QDialog, QDialogButtonBox, QSpinBox, QColorDialog, QGraphicsView, QGraphicsScene,
+    QDialog, QDialogButtonBox, QSpinBox, QDoubleSpinBox, QStyleOptionSpinBox, QColorDialog, QGraphicsView, QGraphicsScene,
     QGraphicsTextItem, QGraphicsDropShadowEffect, QSlider, QStyle, QScrollBar, QWidgetAction, QSizePolicy, QGridLayout, QTabBar, QStackedWidget)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -22,6 +22,8 @@ from subtitle_document import (new_document, cue, validate_document, save_projec
 from translation import validate_endpoint
 from ui_icons import decorate_text, decorate, tool_icon
 from appearance import color as theme_color
+from subtitle_encoding import DEFAULTS as SUBTITLE_EXPORT_DEFAULTS
+from video_encoding import CODECS, ENCODER_LABELS
 
 
 def action(text, callback, tip='', primary=False):
@@ -41,10 +43,24 @@ def command(parent, text, callback, tip):
     return item
 
 
+class ExportNumber(QDoubleSpinBox):
+    """Match the workspace's small triangle controls instead of native arrows."""
+    def paintEvent(self,event):
+        super().paintEvent(event)
+        option=QStyleOptionSpinBox();self.initStyleOption(option)
+        painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(theme_color('accent_text' if self.isEnabled() else 'disabled'))
+        for control,direction in ((QStyle.SubControl.SC_SpinBoxUp,-1),(QStyle.SubControl.SC_SpinBoxDown,1)):
+            rect=self.style().subControlRect(QStyle.ComplexControl.CC_SpinBox,option,control,self)
+            x,y=rect.center().x(),rect.center().y()
+            painter.drawPolygon(QPolygon([QPoint(x-4,y-direction*2),QPoint(x+4,y-direction*2),QPoint(x,y+direction*3)]))
+
+
 class SubtitleVideoExportDialog(QDialog):
-    def __init__(self,parent):
+    def __init__(self,parent,fmt='mp4',track='file'):
         super().__init__(parent)
-        self.setWindowTitle('Export video with subtitles'); self.setMinimumWidth(560)
+        self.setWindowTitle('Export video with subtitles'); self.setMinimumWidth(640)
         layout=QVBoxLayout(self); layout.setContentsMargins(20,20,20,20); layout.setSpacing(14)
         form=QFormLayout(); form.setSpacing(12); layout.addLayout(form)
         video=QLabel(Path(parent.video_path).name); video.setWordWrap(True); video.setToolTip(parent.video_path)
@@ -63,12 +79,75 @@ class SubtitleVideoExportDialog(QDialog):
         form.addRow('Subtitle file',self.file_row)
         self.format=parent.combo(); self.format.addItem('MP4 · permanent subtitles','mp4'); self.format.addItem('MKV · switchable subtitle track','mkv')
         form.addRow('Output',self.format)
-        note=QLabel('MP4 burns the subtitles into the picture. MKV keeps them switchable and copies the original video and audio.\n\nExisting ASS/SSA files keep their own styling; SRT/VTT use their supported formatting. Editor Style settings do not replace the selected file’s appearance. Your editor and original files stay unchanged.')
-        note.setWordWrap(True); note.setObjectName('muted'); layout.addWidget(note)
+        settings=dict(SUBTITLE_EXPORT_DEFAULTS,**getattr(parent,'video_export_settings',{}))
+        self.encoding_tabs=QTabWidget();layout.addWidget(self.encoding_tabs)
+        video_page=QWidget();video_form=QFormLayout(video_page);video_form.setSpacing(10)
+        audio_page=QWidget();audio_form=QFormLayout(audio_page);audio_form.setSpacing(10)
+        self.encoding_tabs.addTab(video_page,'Video');self.encoding_tabs.addTab(audio_page,'Audio')
+        def choice(form,label,items,setting,tip):
+            widget=parent.combo()
+            for text,value in items:widget.addItem(text,value)
+            widget.setCurrentIndex(max(0,widget.findData(settings[setting])))
+            widget.setToolTip(tip);form.addRow(label,widget);return widget
+        self.codec=choice(video_form,'Video codec',[('Match source codec','source')]+[(v[0],k) for k,v in CODECS.items()],
+            'codec','Reuse H.264, H.265, or AV1 from the source. Other source codecs fall back to H.264. Burning subtitles always re-encodes the picture.')
+        self.encoder=parent.combo();video_form.addRow('Encoder',self.encoder)
+        self.encoder.setToolTip('Automatic tests available hardware encoders, then falls back to CPU. A manually selected encoder must be supported by your computer.')
+        self.rate=choice(video_form,'Size / quality',[('Match source video bitrate','source'),('Constant quality','quality'),('Target video bitrate','bitrate')],
+            'rate','Source bitrate aims for a similar video size, but does not guarantee it. If unavailable, quality 23 is used. Constant quality lets file size vary with the picture.')
+        self.quality=ExportNumber();self.quality.setDecimals(0);self.quality.setRange(0,51);self.quality.setValue(settings['quality'])
+        self.quality.setToolTip('Lower values retain more detail and usually create larger files. 23 is a starting point; the same number is not equivalent across codecs or encoders.')
+        video_form.addRow('Quality',self.quality)
+        self.bitrate=ExportNumber();self.bitrate.setRange(.1,200);self.bitrate.setDecimals(2);self.bitrate.setSuffix(' Mbps');self.bitrate.setValue(settings['bitrate'])
+        self.bitrate.setToolTip('Target average video bitrate. Approximate video size in MB = Mbps × seconds ÷ 8, plus audio and container overhead. Actual size varies.')
+        video_form.addRow('Video bitrate',self.bitrate)
+        self.preset=choice(video_form,'Encoding speed',[('Fast','fast'),('Balanced','medium'),('Slow','slow')],
+            'preset','Slower encoding can use the bitrate more efficiently. Source dimensions and frame rate are retained; odd dimensions are padded by one pixel.')
+        self.audio=choice(audio_form,'Audio',[('Automatic · copy when compatible','auto'),('Copy original audio','copy'),('AAC','aac')],
+            'audio','Copy preserves audio without another lossy encode. Automatic uses AAC when copying is incompatible with MP4 or stereo conversion is selected.')
+        self.channels=choice(audio_form,'Channels',[('Original','original'),('Stereo · 2 channels','stereo')],
+            'channels','Stereo downmixes multichannel audio for broader playback compatibility and requires AAC encoding. Copy keeps the original channels.')
+        self.audio_bitrate=choice(audio_form,'AAC bitrate',[(f'{n} kbps',n) for n in (64,96,128,160,192,256,320,384,512)],
+            'audio_bitrate','Used only when encoding AAC. 192–256 kbps suits most stereo audio; 320 kbps gives extra headroom. A higher bitrate cannot restore lost detail.')
+        audio_note=QLabel('Original audio is copied when possible. Choose Stereo if your playback device has trouble with multichannel sound.')
+        audio_note.setWordWrap(True);audio_note.setObjectName('muted');audio_form.addRow(audio_note)
+        self.note=QLabel();self.note.setWordWrap(True);self.note.setObjectName('muted');layout.addWidget(self.note)
+        style_note=QLabel('ASS/SSA files keep their own styling. Editor styles apply only to editor tracks.')
+        style_note.setWordWrap(True);style_note.setObjectName('muted');layout.addWidget(style_note)
+        self.codec.currentIndexChanged.connect(self.refresh_encoders)
+        self.format.currentIndexChanged.connect(self.refresh_controls)
+        self.rate.currentIndexChanged.connect(self.refresh_controls)
+        self.audio.currentIndexChanged.connect(self.refresh_controls)
+        self.channels.currentIndexChanged.connect(self.refresh_controls)
+        self.refresh_encoders();self.encoder.setCurrentIndex(max(0,self.encoder.findData(settings['encoder'])))
+        self.format.setCurrentIndex(max(0,self.format.findData(fmt)))
+        self.source.setCurrentIndex(max(0,self.source.findData(track)))
         self.source.currentIndexChanged.connect(lambda:self.file_row.setEnabled(self.source.currentData()=='file'))
+        self.file_row.setEnabled(self.source.currentData()=='file');self.refresh_controls()
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText('Choose output…')
         buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def refresh_encoders(self):
+        previous=self.encoder.currentData();self.encoder.clear();self.encoder.addItem('Automatic','auto')
+        for name in CODECS.get(self.codec.currentData(),('',()))[1]:
+            self.encoder.addItem(ENCODER_LABELS.get(name,ENCODER_LABELS.get(name.split('_')[-1],name)),name)
+        self.encoder.setCurrentIndex(max(0,self.encoder.findData(previous)))
+
+    def refresh_controls(self):
+        mp4=self.format.currentData()=='mp4';self.encoding_tabs.setEnabled(mp4)
+        self.quality.setEnabled(self.rate.currentData()=='quality')
+        self.bitrate.setEnabled(self.rate.currentData()=='bitrate')
+        if self.audio.currentData()=='copy':self.channels.setCurrentIndex(0)
+        self.channels.setEnabled(self.audio.currentData()!='copy')
+        self.audio_bitrate.setEnabled(self.audio.currentData()!='copy')
+        self.note.setText('MP4 burns subtitles into the picture at the source resolution and frame rate. Matching bitrate helps control size; it does not make this a lossless copy.' if mp4 else
+            'MKV copies the original video and audio without re-encoding and adds switchable subtitles. Video and audio encoding controls do not apply.')
+
+    def export_settings(self):
+        return dict(codec=self.codec.currentData(),encoder=self.encoder.currentData(),rate=self.rate.currentData(),
+            quality=int(self.quality.value()),bitrate=self.bitrate.value(),preset=self.preset.currentData(),
+            audio=self.audio.currentData(),audio_bitrate=self.audio_bitrate.currentData(),channels=self.channels.currentData())
 
     def browse(self):
         path,_=QFileDialog.getOpenFileName(self,'Choose subtitle file',self.file.text(),'Subtitles (*.srt *.vtt *.ass *.ssa)')
@@ -701,7 +780,7 @@ class SubtitleWorkspace(QWidget):
         self.pan.blockSignals(True);self.pan.setValue(round(self.timeline.offset/max(.001,self.timeline.duration-self.timeline.span)*10000));self.pan.setEnabled(self.timeline.zoom>1);self.pan.blockSignals(False)
     def export_menu(self):
         menu=QMenu(self)
-        movie=menu.addAction('Video with subtitles…',self.export_video_dialog)
+        movie=menu.addAction('Video with subtitles…',lambda:self.export_video_dialog())
         movie.setEnabled(bool(self.video_path)); movie.setToolTip('Choose an existing subtitle file or an editor track; no transcription required')
         menu.addSeparator()
         for track,label in [('source','Source'),('translation','Translation')]:
@@ -723,7 +802,9 @@ class SubtitleWorkspace(QWidget):
             if path.suffix.lower()!='.'+fmt:path=Path(str(path)+'.'+fmt)
             try:path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,encoding='utf-8-sig');self.host.set_status('Subtitle file exported.')
             except OSError as exc:self.error(exc)
-    def export_movie(self,fmt,track):
+    def export_movie(self,fmt,track,settings=None):
+        if settings is None:
+            self.export_video_dialog(fmt,track);return
         if not self.commit_edit():return
         if not self.video_path:self.error('Add the matching video before exporting a video file.');return
         try:export_text(self.doc,'ass',track)
@@ -732,16 +813,17 @@ class SubtitleWorkspace(QWidget):
         if not path:return
         if not path.lower().endswith('.'+fmt):path+='.'+fmt
         if Path(path).exists():self.error('Choose a new filename. Subtitle video exports do not replace existing files.');return
-        self.submit('subtitle_export',output=path,format=fmt,track=track)
+        self.submit('subtitle_export',output=path,format=fmt,track=track,video_export_settings=settings)
 
-    def export_video_dialog(self):
+    def export_video_dialog(self,fmt='mp4',track='file'):
         if self.busy:return
         if not self.video_path:self.error('Add the matching video before exporting.');return
-        dialog=SubtitleVideoExportDialog(self)
+        dialog=SubtitleVideoExportDialog(self,fmt,track)
         if not dialog.exec():return
         source,fmt=dialog.source.currentData(),dialog.format.currentData()
+        self.video_export_settings=dialog.export_settings()
         if source!='file':
-            self.export_movie(fmt,source);return
+            self.export_movie(fmt,source,self.video_export_settings);return
         subtitle=str(Path(dialog.file.text().strip()).expanduser().resolve())
         path,_=QFileDialog.getSaveFileName(self,'Export subtitled video',str(self.root/'outputs'/f'{Path(self.video_path).stem}-subtitled.{fmt}'),f'{fmt.upper()} (*.{fmt})')
         if not path:return
@@ -749,4 +831,4 @@ class SubtitleWorkspace(QWidget):
         if Path(path).exists():self.error('Choose a new filename. Subtitle video exports do not replace existing files.');return
         # File export is independent of incomplete/unsaved editor text.
         self.job_requested.emit(dict(action='subtitle_export',video=self.video_path,config=dict(self.host.config),
-            subtitle_file=subtitle,output=path,format=fmt))
+            subtitle_file=subtitle,output=path,format=fmt,video_export_settings=dict(self.video_export_settings)))

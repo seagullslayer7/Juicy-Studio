@@ -382,9 +382,29 @@ MP4 burns subtitles into the picture; MKV adds a switchable subtitle track and
 copies the original video/audio. External subtitle files are passed through
 without stripping their formatting. ASS/SSA styles and positioning are retained;
 fonts used by external files need to be installed. Editor Style settings apply
-to editor tracks, not external files. Audio retains the existing subtitle-export
-behavior: compatible MP4 audio is copied; incompatible audio is re-encoded.
+to editor tracks, not external files.
+
+The export dialog has separate **Video** and **Audio** controls for MP4, for both
+external files and editor tracks. Choose H.264, HEVC, or AV1 and an automatic,
+NVIDIA, AMD, Intel, or CPU encoder; unsupported manual encoders report an error.
+Match source bitrate is the default; constant quality (0–51, lower is higher
+quality) and target bitrate (0.1–200 Mbps) are also available. The default matches
+H.264/HEVC/AV1 sources, falling back to H.264 for other codecs. Missing or
+unsupported source bitrate falls back to quality 23. File sizes are not guaranteed.
+Source resolution and frame rate are retained, with one-pixel padding when needed.
+
+Audio can be copied, encoded as AAC, or automatically copied when compatible.
+Stereo conversion uses AAC; strict Copy keeps the original channels. AAC bitrate
+can be chosen separately. MKV copies video/audio and disables encoding controls.
+Choices are remembered for the app session and do not change global export settings.
 
 Verification covers all four file extensions in MP4 and MKV, ASS color/position
 tags, unchanged compatible audio, MKV video stream copying, invalid files, empty
 editor export, and preserving in-progress editor text.
+
+Subtitle export controls were checked with 118 passing regression tests plus
+synthetic one-second MP4 exports using NVIDIA HEVC and AV1, source-codec/bitrate
+matching, and four-channel to stereo conversion. Copied AAC packets matched the
+source exactly; MKV video and audio packets also matched. Both editor tracks and
+external files were exercised. The dialog fits a 640×642 logical-pixel area;
+hardware-specific AMD/Intel encoders still require testing on those devices.

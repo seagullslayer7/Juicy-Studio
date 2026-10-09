@@ -255,23 +255,28 @@ def export_video(job, emit):
                 if font_file and font.is_file():
                     command += ['-attach', str(font), '-metadata:s:t:0', 'mimetype=application/x-truetype-font']
             else:
-                # Filter path is a fixed filename inside the private temporary cwd.
-                # Software encoding is available on AMD, NVIDIA, and CPU-only machines.
-                config = dict(job.get('config', {}), export_format='mp4')
-                # Burn-in always needs an encoder. With the original/copy preset,
-                # retain dimensions and use automatic hardware selection at high quality.
-                if config.get('export_encoder', 'copy') == 'copy' or config.get('export_quality') == 'original':
-                    config.update(export_encoder='auto', export_quality='high', export_video_quality='18',
-                                  export_resolution='original', export_fps='original', export_preset='medium')
-                encoding = core.export_encoding_args(config, video)
-                vf = encoding.index('-vf')
-                encoding[vf+1] += ',subtitles='+subtitle.name
-                # Retain common MP4-compatible audio exactly. Otherwise use the
-                # configured audio encode so MKV-only audio cannot break an MP4 export.
-                probe = run(['ffprobe','-v','error','-select_streams','a','-show_entries','stream=codec_name','-of','json',str(video)], capture_output=True, text=True)
-                audio_streams = json.loads(probe.stdout).get('streams', [])
-                if all(s.get('codec_name') in ('aac','mp3','ac3','eac3','alac') for s in audio_streams):
-                    audio_index=encoding.index('-c:a'); encoding=encoding[:audio_index]+['-c:a','copy']
+                if 'video_export_settings' in job:
+                    from subtitle_encoding import encoding_args
+                    encoding = encoding_args(job['video_export_settings'], video, subtitle.name,
+                        lambda message: emit('stage', message=message, percent=0, phase='render', phase_percent=0))
+                else:
+                    # Filter path is a fixed filename inside the private temporary cwd.
+                    # Software encoding is available on AMD, NVIDIA, and CPU-only machines.
+                    config = dict(job.get('config', {}), export_format='mp4')
+                    # Burn-in always needs an encoder. With the original/copy preset,
+                    # retain dimensions and use automatic hardware selection at high quality.
+                    if config.get('export_encoder', 'copy') == 'copy' or config.get('export_quality') == 'original':
+                        config.update(export_encoder='auto', export_quality='high', export_video_quality='18',
+                                      export_resolution='original', export_fps='original', export_preset='medium')
+                    encoding = core.export_encoding_args(config, video)
+                    vf = encoding.index('-vf')
+                    encoding[vf+1] += ',subtitles='+subtitle.name
+                    # Retain common MP4-compatible audio exactly. Otherwise use the
+                    # configured audio encode so MKV-only audio cannot break an MP4 export.
+                    probe = run(['ffprobe','-v','error','-select_streams','a','-show_entries','stream=codec_name','-of','json',str(video)], capture_output=True, text=True)
+                    audio_streams = json.loads(probe.stdout).get('streams', [])
+                    if all(s.get('codec_name') in ('aac','mp3','ac3','eac3','alac') for s in audio_streams):
+                        audio_index=encoding.index('-c:a'); encoding=encoding[:audio_index]+['-c:a','copy']
                 command += ['-map', '0:v:0', '-map', '0:a?', *encoding, '-movflags', '+faststart']
             command += ['-progress', 'pipe:1', '-nostats', str(partial)]
             with (Path(scratch)/'export.log').open('w+', encoding='utf-8') as log:
