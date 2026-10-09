@@ -142,6 +142,40 @@ motion/anatomical quality. Public sample comparisons are development-only.
 
 ### People and whole-frame detail
 
+**SwinIR Large · detail** and **SwinIR Large · fidelity** are optional CUDA
+live-action models. They process the entire frame, including exposed skin, hands,
+hair, clothing, and surroundings. Detail uses the author's GAN checkpoint;
+Fidelity uses the PSNR checkpoint and can appear softer. These are general
+restoration models, not anatomical specialists. Use Full AI restoration to see
+their reconstruction; source-guided mode intentionally limits the effect. The
+existing optional GFPGAN face pass and final source protection still apply.
+
+Each variant downloads about 136 MiB once, reuses verified weights, and requires
+no extra Python packages. Both are substantially slower than BSRGAN. On the local
+RTX 5060 Ti, the small 300×348 skin sample took about 0.94–1.07 seconds for SwinIR
+inference/resizing versus about 0.32 seconds for BSRGAN (single measurements, not
+a throughput guarantee). Larger inputs use overlapping-context tiles with
+window-aligned origins; GPU-memory failures reduce the tile size. Vulkan continues
+using the existing Detail model and explicitly rejects these CUDA-only choices.
+
+The closer test uses a public swimmer photograph with exposed torso, shoulders,
+arms, and hands, reduced to 300×348 and JPEG-compressed before restoration to
+600×696. Relative to the reference, SwinIR Fidelity had lower pixel error than
+BSRGAN in the selected skin, arm, and hand crops. SwinIR Detail retained a
+different, more visible texture appearance but was not a consistent pixel-error
+winner. None recovered all original fine skin detail. A second clothed full-body
+sample also favored the new variants by the tested crop metric. Still-image
+metrics and synthetic pans do not establish naturalness or stability on real
+body motion, or prove the absence of distortion.
+
+Verification now totals 112 automated tests. Added checks cover model selection,
+packaged architecture/license, tiny/odd input dimensions, finite output, and
+deterministic evaluation. Actual CUDA tests load both pinned checkpoints strictly,
+compare repeated/full/tiled output (maximum one 8-bit level difference in the
+tested crop), and export a panning skin sample with 24 fps output. Full restoration
+also runs GFPGAN successfully; source-guided mode bypasses it. GUI selection and
+real previews pass, with controls fitting 1280×720 through 1920×1080.
+
 For live action on NVIDIA CUDA, **Whole-frame restoration** offers:
 
 - **Balanced** for speed and adjustable denoising.

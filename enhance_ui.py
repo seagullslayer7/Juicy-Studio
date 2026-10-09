@@ -105,7 +105,8 @@ class EnhanceWorkspace(QWidget):
         self.backend.setToolTip('Automatic uses CUDA when an NVIDIA runtime is ready; otherwise Vulkan. CUDA keeps animation or live-action models in GPU memory across frames. Video encoding is a separate setting.')
         self.restoration = Combo(); self.restoration.addItem('Balanced · faster','balanced'); self.restoration.addItem('Detail · slower','detail')
         self.restoration.addItem('Detail · full 4× model','detail4');self.restoration.addItem('Whole frame · BSRGAN','bsrgan')
-        self.restoration.setToolTip('CUDA live action: Balanced is fastest. Detail uses a native 2× model up to 2× enlargement; full 4× always uses the larger-scale model. BSRGAN is an alternative whole-frame model for people, hair, clothing, and scenery—not a dedicated body/anatomy model. Compare previews; none guarantees recovered detail. Vulkan uses its Detail model.')
+        self.restoration.addItem('SwinIR Large · detail','swinir_detail');self.restoration.addItem('SwinIR Large · fidelity','swinir_fidelity')
+        self.restoration.setToolTip('CUDA live action: Balanced favors speed. Detail/BSRGAN provide whole-frame restoration. SwinIR Large offers different reconstruction of skin, hair, clothing, and scenery: Detail favors visible texture, Fidelity favors closer reconstruction and can look softer. Each downloads about 136 MiB once and is substantially slower; preview first. These are general models, not anatomy specialists, and can alter details or flicker. Full restoration shows their effect most clearly; source-guided mode deliberately limits it. Vulkan uses its existing Detail model.')
         self.face_restore=Combo();self.face_restore.addItem('Off','off');self.face_restore.addItem('GFPGAN · restore detected faces','gfpgan')
         self.face_restore.setToolTip('Optional live-action face restoration, separate from the whole-frame model. Downloads about 333 MiB once. Runs locally on CUDA or, with Vulkan upscaling, on CPU (slower). Does not restore hands or bodies. Small/profile/occluded faces may be skipped; frame-by-frame results may flicker.')
         self.face_strength=Spin();self.face_strength.setDecimals(0);self.face_strength.setRange(0,100);self.face_strength.setValue(35);self.face_strength.setSuffix('%')
@@ -359,7 +360,7 @@ class EnhanceWorkspace(QWidget):
             if self.model.currentData() == 'animation': profile = 'Animation video'
             else:
                 if self.restoration.currentData() == 'detail' and max(output[0]/width,output[1]/height) <= 2: scale=2
-                profile = {'balanced':'Balanced','detail':'Detail','detail4':'Detail full 4×','bsrgan':'BSRGAN whole frame'}[self.restoration.currentData()]
+                profile = {'balanced':'Balanced','detail':'Detail','detail4':'Detail full 4×','bsrgan':'BSRGAN whole frame','swinir_detail':'SwinIR Large detail · slower','swinir_fidelity':'SwinIR Large fidelity · slower'}[self.restoration.currentData()]
             self.hint.setText(f'CUDA · {profile} · native {scale}× AI, resized to target · first use downloads verified model weights. Preview to compare detail and texture.')
             return
         ratio = max(output[0]/width,output[1]/height)

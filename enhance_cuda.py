@@ -5,6 +5,8 @@ import urllib.request
 from uuid import uuid4
 
 WEIGHTS = {
+    'SwinIR-L-GAN.pth': ('https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFOWMFC_s64w8_SwinIR-L_x4_GAN.pth', 142473939, '99adfa91350a84c99e946c1eb3d8fce34bc28f57d807b09dc8fe40a316328c0a'),
+    'SwinIR-L-PSNR.pth': ('https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFOWMFC_s64w8_SwinIR-L_x4_PSNR.pth', 142473947, '450be6eac63a59959b55a83df6743444de9f018547f81d16f699b3680d366ad7'),
     'BSRGAN.pth': ('https://github.com/cszn/KAIR/releases/download/v1.0/BSRGAN.pth', 67046751, '5d505a0766160921e0388d76e1ddf08cb114303990f9080432bf2b1c988b1c54'),
     'GFPGANv1.4.pth': ('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth', 348632874, 'e2cd4703ab14f4d01fd1383a8a8b266f9a5833dacee8e6a79d3bf21a1b6be5ad'),
     'face_detection_yunet_2023mar.onnx': ('https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx', 232589, '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'),
@@ -21,6 +23,8 @@ def model_choice(profile, width, height, output, content='live'):
     if profile == 'balanced':
         return 4, ('realesr-general-x4v3.pth', 'realesr-general-wdn-x4v3.pth')
     if profile == 'bsrgan': return 4, ('BSRGAN.pth',)
+    if profile in ('swinir_detail','swinir_fidelity'):
+        return 4, ('SwinIR-L-'+('GAN' if profile=='swinir_detail' else 'PSNR')+'.pth',)
     if profile == 'detail4': return 4, ('RealESRGAN_x4plus.pth',)
     if profile != 'detail': raise ValueError('Choose Balanced or Detail restoration.')
     scale = 2 if max(output[0]/width, output[1]/height) <= 2 else 4
@@ -71,8 +75,14 @@ class CudaEnhancer:
         folder = Path(root)/'tools/enhance/torch-models'
         ensure_weights(folder, names, emit)
         emit('stage', message=f'Loading {profile} AI model · {torch.cuda.get_device_name(index)}', phase='load', percent=0)
-        net = (SRVGGNetCompact(num_conv=16, upscale=4) if content == 'animation' else
-               SRVGGNetCompact(num_conv=32, upscale=4) if profile == 'balanced' else RRDBNet(3,3,scale=self.scale))
+        swinir=content=='live' and profile in ('swinir_detail','swinir_fidelity')
+        if swinir:
+            from enhance_swinir_network import SwinIR
+            net=SwinIR(upscale=4,in_chans=3,img_size=64,window_size=8,img_range=1.,depths=[6]*9,
+                embed_dim=240,num_heads=[8]*9,mlp_ratio=2,upsampler='nearest+conv',resi_connection='3conv')
+        else:
+            net = (SRVGGNetCompact(num_conv=16, upscale=4) if content == 'animation' else
+                   SRVGGNetCompact(num_conv=32, upscale=4) if profile == 'balanced' else RRDBNet(3,3,scale=self.scale))
         states = []
         for name in names:
             checkpoint = torch.load(folder/name, map_location='cpu', weights_only=True)
@@ -84,6 +94,7 @@ class CudaEnhancer:
         self.net = net.eval().requires_grad_(False).to(device=self.device, dtype=torch.float16, memory_format=torch.channels_last)
         free, _ = torch.cuda.mem_get_info(self.device)
         self.tile = 0 if width*height <= 1280*720 and free >= 6*1024**3 else 512
+        if swinir:self.tile=0 if width*height<=512*512 and free>=6*1024**3 else 256
         self.pad = 40 if profile == 'balanced' or content == 'animation' else 64
         self.name = f'CUDA · {torch.cuda.get_device_name(index)} · {"animation" if content == "animation" else profile} · native {self.scale}×'
 

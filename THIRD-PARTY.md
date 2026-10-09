@@ -94,3 +94,25 @@ Weights download only when their corresponding optional feature is selected.
 They are not included in installer/source distributions. Checkpoints load with
 PyTorch's weights-only loader. Whole-frame upscaling and face restoration are
 separate stages; neither guarantees faithful reconstruction of missing detail.
+
+Optional SwinIR Large whole-frame restoration:
+
+- `enhance_swinir_network.py` is adapted from JingyunLiang/SwinIR commit
+  `6545850fbf8df298df73d81f3e8cba638787c8bd`, `models/network_swinir.py`.
+  The original author credits and Apache-2.0 license are retained in the source
+  and `licenses/SwinIR-LICENSE.txt`. Changes remove the timm dependency and demo,
+  use Torch initialization/evaluation-only stochastic depth, preserve attention
+  mask dtype, specify meshgrid indexing, and handle tiny images with replicate
+  padding. Pretrained topology and parameter keys are unchanged.
+- Detail and Fidelity use the author's v0.0 real-world SwinIR-L x4 GAN and PSNR
+  checkpoints. Each is a separate optional download of about 136 MiB, verified
+  by pinned byte count and SHA-256 before `weights_only=True` loading. No new
+  package installation is required; weights are excluded from release bundles.
+  https://github.com/JingyunLiang/SwinIR
+
+Public restoration-test images and generated comparisons stay outside the source
+and release bundles. The closer swimmer sample is JD Lasica's photo of Ryan
+Lochte before 100 butterfly (2013), CC BY 2.0, obtained via Wikimedia Commons.
+Development comparisons crop/resize/compress and restore that photo:
+https://commons.wikimedia.org/wiki/File:Ryan_Lochte_before_100_butterfly_(9001310871).jpg
+https://creativecommons.org/licenses/by/2.0/

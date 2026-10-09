@@ -139,7 +139,7 @@ def validate_settings(settings):
     if settings.get('colors','source') not in ('source','ai'):raise ValueError('Choose Source colors or AI colors.')
     if str(settings.get('denoise','0.15')) not in ('0','0.15','0.5','1'):raise ValueError('Unsupported denoising strength.')
     if settings.get('backend','auto') not in ('auto','cuda','vulkan'): raise ValueError('Choose a supported AI backend.')
-    if settings.get('restoration','balanced') not in ('balanced','detail','detail4','bsrgan'): raise ValueError('Choose a supported restoration model.')
+    if settings.get('restoration','balanced') not in ('balanced','detail','detail4','bsrgan','swinir_detail','swinir_fidelity'): raise ValueError('Choose a supported restoration model.')
     if settings.get('resolution', '2x') not in TARGETS: raise ValueError('Choose a supported output resolution.')
     model = settings.get('model', 'animation')
     if model not in MODELS: raise ValueError('Choose Animation or Live action.')
@@ -261,7 +261,7 @@ def enhance(job, emit):
     faithful=settings.get('processing','ai')=='faithful'
     guided=settings.get('processing','ai')=='guided'
     backend = 'cpu' if faithful else select_backend(settings)
-    if backend=='vulkan' and job.get('settings',{}).get('restoration') in ('detail4','bsrgan'):
+    if backend=='vulkan' and job.get('settings',{}).get('restoration') in ('detail4','bsrgan','swinir_detail','swinir_fidelity'):
         raise ValueError('This whole-frame model requires NVIDIA CUDA. Choose Detail on Vulkan.')
     if backend == 'vulkan' and not runtime_ready(): raise ValueError('Install the enhancement engine from the Enhance tab first.')
     encoding = export_settings(job.get('settings', {}))
