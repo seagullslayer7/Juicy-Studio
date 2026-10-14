@@ -42,6 +42,8 @@ The release is checked with the automated suite, synthetic playback/export, shar
 
 No layered compositing, independent audio mixing, transitions or keyframes yet. HDR timeline export is unsupported. Clip color edits render at export; the source preview shows original color. Smart translation suggestions need review; optional online AI uses the user's own key.
 
+The WhisperX-compatible runtime pins PyTorch 2.8. GitHub flags three upstream low/medium advisories, duplicated across the CPU/CUDA manifests: [LSTM cell](https://github.com/advisories/GHSA-qfhq-4f3w-5fph), [TorchScript](https://github.com/advisories/GHSA-rrmf-rvhw-rf47), and [sequence unpacking](https://github.com/advisories/GHSA-vgrw-7cvw-pwgx). They are not fixed in this release; a runtime upgrade requires separate compatibility validation.
+
 ---
 
 ## JuicyCensor release history

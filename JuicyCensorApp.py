@@ -1914,6 +1914,11 @@ def main():
     app.setApplicationName(PRODUCT_NAME)
     app.setWindowIcon(QIcon(str(ROOT / 'assets' / 'orange.ico')))
     if sys.platform == 'win32':
+        from PySide6.QtGui import QFontDatabase
+        fonts=Path(os.environ.get('SystemRoot','C:/Windows'))/'Fonts'
+        for filename in ('segoeui.ttf','segoeuib.ttf'):
+            if (fonts/filename).is_file(): QFontDatabase.addApplicationFont(str(fonts/filename))
+        app.setFont(QFont('Segoe UI',10))
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('JuicyStudio.Desktop.1')
     app.setStyle('Fusion')

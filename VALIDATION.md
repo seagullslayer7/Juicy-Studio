@@ -21,6 +21,13 @@ transitions or keyframes yet. HDR timeline export is unsupported. Color edits
 render at export; the source preview shows original color. AI output and
 translation need review. Timing and size estimates are approximate.
 
+The pinned PyTorch 2.8 runtime has three open upstream low/medium advisories,
+reported twice by GitHub for CPU/CUDA requirements. They concern `lstm_cell`,
+`jit.script` and `unpack_sequence`; this application's source has no direct
+calls to those functions. That is not proof that dependencies never call them.
+They remain unresolved because the current WhisperX runtime constrains Torch
+to 2.8.x. See the linked advisories in RELEASE-NOTES.md.
+
 ---
 
 # Historical JuicyCensor 3.0.0 validation

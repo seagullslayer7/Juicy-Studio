@@ -1,7 +1,7 @@
 """Read the bundled guides inside Juicy Studio, with topic navigation and search."""
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QImage, QTextDocument, QTextCursor, QTextBlockFormat, QTextCharFormat, QPainter
+from PySide6.QtGui import QDesktopServices, QImage, QTextDocument, QTextCursor, QTextBlockFormat, QTextCharFormat, QPainter, QFont
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QLineEdit, QTextBrowser, QPushButton, QSplitter
 from appearance import color
@@ -85,7 +85,8 @@ class HelpDialog(QDialog):
         for title, _ in TOPICS: self.topics.addItem(title)
         body.addWidget(self.topics)
         self.browser = GuideBrowser(); self.browser.setOpenLinks(False); self.browser.setOpenExternalLinks(False)
-        font = self.browser.font(); font.setPointSizeF(11); self.browser.setFont(font)
+        font = QFont('Segoe UI',11)
+        self.browser.setFont(font); self.browser.document().setDefaultFont(font)
         self.browser.setStyleSheet('QTextBrowser { border: none; padding: 18px; }')
         self.browser.document().setDefaultStyleSheet(f'h1, h2, h3 {{ color: {color("accent_text").name()}; }} a {{ color: {color("accent_text").name()}; }} p, li {{ line-height: 145%; }} pre {{ background-color: {color("field").name()}; }}')
         self.browser.document().setBaseUrl(QUrl.fromLocalFile(str(self.root) + '/'))
