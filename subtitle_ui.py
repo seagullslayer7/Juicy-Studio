@@ -13,14 +13,14 @@ from PySide6.QtWidgets import (QWidget, QFrame, QLabel, QPushButton, QVBoxLayout
     QLineEdit, QPlainTextEdit, QTabWidget, QCheckBox, QFileDialog, QMessageBox, QMenu,
     QDialog, QDialogButtonBox, QSpinBox, QDoubleSpinBox, QStyleOptionSpinBox, QColorDialog, QGraphicsView, QGraphicsScene,
     QGraphicsTextItem, QGraphicsDropShadowEffect, QSlider, QStyle, QScrollBar, QWidgetAction, QSizePolicy, QGridLayout, QTabBar, QStackedWidget)
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 
 from languages import LANGUAGES, MODELS, language_name, validate_language_model
 from subtitle_document import (new_document, cue, validate_document, save_project,
     load_project, import_subtitles, export_text, quality_notes, History, timestamp)
 from translation import validate_endpoint
-from ui_icons import decorate_text, decorate, tool_icon
+from ui_icons import decorate_text, decorate, tool_icon, icon_only
 from appearance import color as theme_color
 from subtitle_encoding import DEFAULTS as SUBTITLE_EXPORT_DEFAULTS
 from video_encoding import CODECS, ENCODER_LABELS
@@ -61,6 +61,8 @@ class SubtitleVideoExportDialog(QDialog):
     def __init__(self,parent,fmt='mp4',track='file'):
         super().__init__(parent)
         self.setWindowTitle('Export video with subtitles'); self.setMinimumWidth(640)
+        session=getattr(parent.host,'project_session',None)
+        self.project_export=bool(session and session.matches(parent.video_path))
         layout=QVBoxLayout(self); layout.setContentsMargins(20,20,20,20); layout.setSpacing(14)
         form=QFormLayout(); form.setSpacing(12); layout.addLayout(form)
         video=QLabel(Path(parent.video_path).name); video.setWordWrap(True); video.setToolTip(parent.video_path)
@@ -135,12 +137,17 @@ class SubtitleVideoExportDialog(QDialog):
         self.encoder.setCurrentIndex(max(0,self.encoder.findData(previous)))
 
     def refresh_controls(self):
-        mp4=self.format.currentData()=='mp4';self.encoding_tabs.setEnabled(mp4)
+        mp4=self.format.currentData()=='mp4';self.encoding_tabs.setEnabled(mp4 or self.project_export)
         self.quality.setEnabled(self.rate.currentData()=='quality')
         self.bitrate.setEnabled(self.rate.currentData()=='bitrate')
         if self.audio.currentData()=='copy':self.channels.setCurrentIndex(0)
         self.channels.setEnabled(self.audio.currentData()!='copy')
         self.audio_bitrate.setEnabled(self.audio.currentData()!='copy')
+        if self.project_export:
+            self.audio.blockSignals(True);self.audio.setCurrentIndex(self.audio.findData('aac'));self.audio.blockSignals(False)
+            self.channels.blockSignals(True);self.channels.setCurrentIndex(self.channels.findData('stereo'));self.channels.blockSignals(False)
+            self.audio.setEnabled(False);self.channels.setEnabled(False);self.audio_bitrate.setEnabled(True)
+            self.note.setText('Export the full edited project at its canvas size and frame rate. Video is rendered and audio is stereo AAC. MP4 burns subtitles; MKV keeps a switchable track. Project censor regions also apply when enabled in Edit.');return
         self.note.setText('MP4 burns subtitles into the picture at the source resolution and frame rate. Matching bitrate helps control size; it does not make this a lossless copy.' if mp4 else
             'MKV copies the original video and audio without re-encoding and adds switchable subtitles. Video and audio encoding controls do not apply.')
 
@@ -272,9 +279,10 @@ class SubtitleWorkspace(QWidget):
         self.smart_settings, self.api_key = {}, ''
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self); self.audio.setVolume(.65); self.player.setAudioOutput(self.audio)
+        self.media_devices = QMediaDevices(self)
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(8)
         toolbar = QHBoxLayout(); toolbar.setSpacing(8)
-        self.import_button = command(self, 'Open subtitles', self.open_document, 'Open an SRT, VTT, ASS, or JuicyCensor subtitle project')
+        self.import_button = command(self, 'Open subtitles', self.open_document, 'Open an SRT, VTT, ASS, or Juicy Studio subtitle project')
         self.save_button = command(self, 'Save project', self.save_document, 'Save both languages, styling, scene notes, and pending suggestions in one project')
         self.source_language = combo()
         for label, code in LANGUAGES: self.source_language.addItem(label, code)
@@ -320,7 +328,7 @@ class SubtitleWorkspace(QWidget):
         self.split_button = action('Split', self.split_line, 'Split the selected line at the playhead and source text cursor')
         self.merge_button = action('Merge', self.merge_lines, 'Merge adjacent selected subtitle lines')
         self.remove_button = action('Remove', self.remove_lines, 'Remove the selected subtitle lines; undo is available')
-        for b in (self.add_button,self.split_button,self.merge_button,self.remove_button): tools.addWidget(b)
+        for b,icon in ((self.add_button,'plus'),(self.split_button,'split'),(self.merge_button,'merge'),(self.remove_button,'trash')):tools.addWidget(icon_only(b,icon))
         self.count = QLabel('Open subtitles or transcribe a video to begin.'); self.count.setObjectName('muted'); self.count.setWordWrap(True)
         left_layout.addWidget(self.count)
         body.addWidget(left)
@@ -340,16 +348,38 @@ class SubtitleWorkspace(QWidget):
             b = action('', slot, tip); b.setProperty('mediaIcon',icon.value); b.setIcon(host.media_icon(icon)); b.setFixedWidth(38); transport.addWidget(b)
             if tip == 'Play or pause': self.play_button = b
         self.line_play = action('Play line', self.play_line, 'Play the selected subtitle and stop at its end')
-        transport.addWidget(self.line_play)
+        transport.addWidget(icon_only(self.line_play,'play_line'))
         self.clock = QLabel('00:00:00.000'); self.clock.setObjectName('muted'); self.clock.setMinimumWidth(80); transport.addWidget(self.clock); transport.addStretch()
         self.playback_popup = QMenu(self)
         self.playback_options = action('', lambda:self.playback_popup.exec(self.playback_options.mapToGlobal(self.playback_options.rect().bottomLeft())), 'Volume, playback speed, and skip interval')
         self.playback_options.setProperty('mediaIcon',QStyle.StandardPixmap.SP_MediaVolume.value)
         self.playback_options.setIcon(host.media_icon(QStyle.StandardPixmap.SP_MediaVolume)); self.playback_options.setFixedWidth(36)
         transport.addWidget(self.playback_options)
-        playback_panel = QWidget(); playback_form = QFormLayout(playback_panel)
-        self.volume = QSlider(Qt.Orientation.Horizontal); self.volume.setRange(0,100); self.volume.setValue(65); self.volume.setMinimumWidth(160)
-        self.volume.valueChanged.connect(lambda value:self.audio.setVolume(value/100)); playback_form.addRow('Volume',self.volume)
+        playback_panel = QWidget(); playback_row = QHBoxLayout(playback_panel)
+        playback_row.setContentsMargins(12,10,12,10); playback_row.setSpacing(18)
+        volume_panel = QWidget(); volume_layout = QVBoxLayout(volume_panel)
+        volume_layout.setContentsMargins(0,0,0,0); volume_layout.setSpacing(8)
+        self.volume_label = QLabel('65%'); self.volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        volume_layout.addWidget(self.volume_label); playback_row.addWidget(volume_panel)
+        options_panel = QWidget(); playback_form = QFormLayout(options_panel)
+        playback_form.setContentsMargins(0,0,0,0); playback_row.addWidget(options_panel)
+        self.volume = QSlider(Qt.Orientation.Vertical); self.volume.setObjectName('previewVolume')
+        self.volume.setRange(0,100); self.volume.setValue(65); self.volume.setFixedSize(26,112)
+        self.volume.setAccessibleName('Preview volume'); self.volume.setToolTip('Preview volume only; exported audio is unchanged')
+        self.volume.valueChanged.connect(lambda value:self.audio.setVolume(value/100))
+        self.volume.valueChanged.connect(self.update_preview_volume)
+        volume_layout.addWidget(self.volume,0,Qt.AlignmentFlag.AlignHCenter)
+        self.previous_volume = 65
+        self.preview_mute = action('Mute',self.toggle_preview_mute,'Mute or restore preview audio')
+        volume_layout.addWidget(self.preview_mute); volume_layout.addStretch()
+        self.audio_device = combo()
+        self.audio_device.setToolTip('Choose where preview sound plays. Automatic follows the Windows default output.')
+        playback_form.addRow('Audio output', self.audio_device)
+        self.refresh_audio_devices()
+        self.audio_device.currentIndexChanged.connect(lambda _: self.reconnect_audio())
+        self.media_devices.audioOutputsChanged.connect(self.refresh_audio_devices)
+        playback_form.addRow(action('Reconnect audio', self.reconnect_audio,
+            'Reconnect preview sound to the selected output without changing subtitle edits or playback position'))
         self.speed = type(host.skip_amount)(); self.speed.setRange(.25,4); self.speed.setDecimals(2); self.speed.setSingleStep(.25); self.speed.setValue(1); self.speed.setPrefix('×')
         self.speed.valueChanged.connect(self.player.setPlaybackRate); playback_form.addRow('Playback speed',self.speed)
         self.skip = type(host.skip_amount)(); self.skip.setRange(.1,600); self.skip.setSingleStep(1); self.skip.setValue(5); self.skip.setSuffix(' s')
@@ -403,6 +433,7 @@ class SubtitleWorkspace(QWidget):
         self.accept_button = action('Accept', self.accept_suggestion, 'Use this suggestion as the translation; undo is available', True)
         self.reject_button = action('Dismiss', self.dismiss_suggestion, 'Discard this suggestion and keep your translation')
         self.accept_all_button = action('Accept all', self.accept_all, 'Apply every pending suggestion after confirmation')
+        icon_only(self.accept_button,'apply');icon_only(self.reject_button,'dismiss')
         for b in (self.accept_button,self.reject_button,self.accept_all_button): accept_row.addWidget(b)
         suggest_layout.addLayout(accept_row); self.detail_tabs.addWidget(suggestion)
         style_page = QWidget(); style_page.setObjectName('reviewPage'); style_layout = QHBoxLayout(style_page); style_layout.setContentsMargins(0,0,0,0); style_layout.setSpacing(24)
@@ -442,7 +473,7 @@ class SubtitleWorkspace(QWidget):
             b=action('',lambda checked=False, factor=2 if plus else .5:self.timeline.zoom_by(factor),'Zoom in' if plus else 'Zoom out')
             b.setProperty('zoomDirection',plus); b.setIcon(host.zoom_icon(plus)); b.setFixedWidth(36); wave_tools.addWidget(b)
         self.pan = QScrollBar(Qt.Orientation.Horizontal); self.pan.setRange(0,10000); self.pan.valueChanged.connect(self.timeline.pan); wave_tools.addWidget(self.pan,1)
-        wave_tools.addWidget(action('Fit',lambda:self.timeline.set_view(1,0),'Show the whole video'))
+        wave_tools.addWidget(icon_only(action('Fit',lambda:self.timeline.set_view(1,0),'Show the whole video'),'fit'))
         self.timeline.view_changed.connect(self.sync_pan)
         layout.addLayout(wave_tools)
         bottom = QHBoxLayout()
@@ -487,6 +518,8 @@ class SubtitleWorkspace(QWidget):
         if self.autosave_path:
             try: save_project(self.autosave_path,self.doc)
             except (OSError,ValueError) as exc: self.host.set_status('Could not autosave subtitles: '+str(exc))
+        session=getattr(self.host,'project_session',None)
+        if session:session.sync_subtitles(self.doc)
     def load_video(self,path):
         self.commit_edit(); self.autosave(); self.player.stop(); self.video_path=path
         self.resume_position = None
@@ -617,12 +650,16 @@ class SubtitleWorkspace(QWidget):
         self.commit_edit(); self.history.record(self.doc)
     def undo(self):
         if self.busy:return
+        if getattr(self.host,'project_session',None) and self.host.project_session.matches(self.video_path):
+            self.commit_edit();self.host.editor.undo();return
         self.commit_edit(); self.doc=self.history.undo(self.doc); self.refresh(self.active_row); self.autosave()
     def redo(self):
         if self.busy:return
+        if getattr(self.host,'project_session',None) and self.host.project_session.matches(self.video_path):
+            self.host.editor.redo();return
         self.doc=self.history.redo(self.doc); self.refresh(self.active_row); self.autosave()
     def open_document(self):
-        path,_=QFileDialog.getOpenFileName(self,'Open subtitles or a project','','Subtitles (*.srt *.vtt *.ass *.ssa);;JuicyCensor projects (*.juice.json)')
+        path,_=QFileDialog.getOpenFileName(self,'Open subtitles or a project','','Subtitles (*.srt *.vtt *.ass *.ssa);;Juicy Studio subtitle projects (*.juice.json)')
         if not path:return
         try:
             doc=load_project(path) if path.endswith('.json') else import_subtitles(path)
@@ -636,7 +673,7 @@ class SubtitleWorkspace(QWidget):
         except (ValueError,OSError,KeyError) as exc:self.error(exc)
     def save_document(self):
         if not self.commit_edit():return
-        path,_=QFileDialog.getSaveFileName(self,'Save subtitle project',str(self.project_path or self.root/'outputs'/'subtitles.juice.json'),'JuicyCensor project (*.juice.json)')
+        path,_=QFileDialog.getSaveFileName(self,'Save subtitle project',str(self.project_path or self.root/'outputs'/'subtitles.juice.json'),'Juicy Studio subtitle project (*.juice.json)')
         if not path:return
         if not path.endswith('.juice.json'):path+='.juice.json'
         try:save_project(path,self.doc); self.project_path=Path(path); self.host.set_status('Subtitle project saved with both languages and suggestions.')
@@ -758,6 +795,49 @@ class SubtitleWorkspace(QWidget):
         self.smart_button.setEnabled(not busy and bool(self.doc['cues']))
         self.export_button.setEnabled(not busy and bool(self.video_path or self.doc['cues']))
         self.host.sync_menu_actions()
+    def refresh_audio_devices(self):
+        selected = self.audio_device.currentData()
+        self.audio_device.blockSignals(True)
+        self.audio_device.clear()
+        default = QMediaDevices.defaultAudioOutput()
+        self.audio_device.addItem('Automatic · ' + (default.description() or 'No audio output'), None)
+        for device in QMediaDevices.audioOutputs():
+            self.audio_device.addItem(device.description(), bytes(device.id()))
+        index = self.audio_device.findData(selected) if selected is not None else 0
+        self.audio_device.setCurrentIndex(max(0, index))
+        self.audio_device.blockSignals(False)
+        self.reconnect_audio(announce=False)
+
+    def update_preview_volume(self,value):
+        self.volume_label.setText(f'{value}%'); self.preview_mute.setText('Unmute' if not value else 'Mute')
+        icon=QStyle.StandardPixmap.SP_MediaVolume if value else QStyle.StandardPixmap.SP_MediaVolumeMuted
+        self.playback_options.setProperty('mediaIcon',icon.value);self.playback_options.setIcon(self.host.media_icon(icon))
+
+    def toggle_preview_mute(self):
+        if self.volume.value():
+            self.previous_volume=self.volume.value();self.volume.setValue(0)
+        else:self.volume.setValue(self.previous_volume)
+
+    def reconnect_audio(self, checked=False, *, announce=True):
+        """Replace a stale audio sink, retaining the loaded video and its position."""
+        selected = self.audio_device.currentData()
+        device = next((d for d in QMediaDevices.audioOutputs() if bytes(d.id()) == selected),
+                      QMediaDevices.defaultAudioOutput())
+        playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if playing: self.player.pause()
+        previous = self.audio
+        self.player.setAudioOutput(None)
+        self.audio = QAudioOutput(device, self)
+        self.audio.setVolume(self.volume.value() / 100)
+        self.player.setAudioOutput(self.audio)
+        previous.deleteLater()
+        if self.player.audioTracks() and self.player.activeAudioTrack() < 0:
+            self.player.setActiveAudioTrack(0)
+        if playing: self.player.play()
+        if announce:
+            self.host.set_status('Preview audio: ' + device.description() if not device.isNull()
+                                 else 'No audio output available. Connect speakers or a headset, then reconnect audio.')
+
     def toggle_play(self):
         if self.player.playbackState()==QMediaPlayer.PlaybackState.PlayingState:self.player.pause()
         else:self.preview_end=None;self.player.play()

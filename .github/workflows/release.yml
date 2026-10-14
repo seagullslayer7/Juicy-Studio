@@ -2,7 +2,7 @@ name: Build Windows release
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags: ['v*', 'studio-v*']
 permissions:
   contents: write
 jobs:
@@ -37,7 +37,7 @@ jobs:
         run: python build_release.py --iscc inno/ISCC.exe --output release
       - uses: actions/upload-artifact@v7.0.1
         with:
-          name: JuicyCensor-Windows-release
+          name: JuicyStudio-Windows-release
           path: |
             release/*Setup.exe
             release/*.zip
@@ -54,4 +54,4 @@ jobs:
             Write-Host "A release already exists for this tag; keeping its published assets and notes."
             exit 0
           }
-          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "JuicyCensor $env:GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --draft --title "Juicy Studio $env:GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md

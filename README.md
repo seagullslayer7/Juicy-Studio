@@ -1,130 +1,72 @@
-> **Juicy Studio · 3.1 development preview:** JuicyCensor is growing toward a
-> focused video editor. An experimental Enhance workspace adds local AI
-> upscaling and comparison playback, faster NVIDIA animation/live-action processing, and
-> live speed/remaining-time estimates. Source-color preservation, adjustable
-> denoising, matched comparison zoom, and preview-based file-size estimates help
-> check the result before a full export. Live action also offers alternative
-> whole-frame restoration models and an optional face-restoration pass with
-> adjustable strength. See [setup, features, and limits](ENHANCE-DEVELOPMENT.md).
-> The downloads below remain the stable 3.0 release.
-> See the [editor roadmap](EDITOR-ROADMAP.md) for the planned project and timeline workflow.
->
-> **Already have subtitles?** In the development preview, open the matching video
-> and choose **Subtitles & Translation → Export → Video with subtitles…**. Select
-> **Existing subtitle file**, browse to an SRT/VTT/ASS/SSA file, then choose MP4
-> for permanent subtitles or MKV for a switchable track. No transcription is
-> required. ASS/SSA files keep their styling; their fonts must be installed.
->
-> **Subtitle export controls:** MP4 exports have their own Video and Audio tabs:
-> H.264, H.265/HEVC, or AV1; automatic or specific hardware/CPU encoders;
-> source bitrate, constant quality, or a target Mbps; and original audio or AAC
-> with optional stereo conversion. Defaults match the source codec and video
-> bitrate when available. Missing bitrate falls back to quality 23, so size can
-> still change. Burning subtitles always re-encodes video; MKV copies the
-> original streams and adds a switchable subtitle track. These choices apply to
-> both editor tracks and external files and are remembered during the session.
+![Juicy Studio 1.0 — Create something juicy](assets/readme-banner.svg)
 
-<p align="center"><img src="assets/readme-banner.svg" alt="JuicyCensor 3.0 — Filter the Juice" width="900"></p>
+**Edit video. Filter dialogue. Create subtitles. Enhance the picture.**
 
-<p align="center"><strong>Censor dialogue · Create subtitles · Translate with context</strong><br>Local speech processing for Windows, in one customizable workspace.</p>
+Juicy Studio brings these tools into one orange-themed Windows workspace.
+Start with a project, move between tools, and export without changing your original media.
+Formerly JuicyCensor; earlier releases remain available.
 
-<p align="center"><a href="https://github.com/seagullslayer7/JuicyCensor/releases/download/v3.0.0/JuicyCensor-3.0.0-Windows-x64-Setup.exe"><strong>Download installer</strong></a> · <a href="https://github.com/seagullslayer7/JuicyCensor/releases/download/v3.0.0/JuicyCensor-3.0.0-Windows-x64-Portable.zip">Portable ZIP</a> · <a href="https://github.com/seagullslayer7/JuicyCensor/releases/tag/v3.0.0">3.0.0 release notes</a></p>
+**[Download Windows installer](https://github.com/seagullslayer7/JuicyCensor/releases/download/studio-v1.0.0/JuicyStudio-1.0.0-Windows-x64-Setup.exe)** · [Portable ZIP](https://github.com/seagullslayer7/JuicyCensor/releases/download/studio-v1.0.0/JuicyStudio-1.0.0-Windows-x64-Portable.zip) · [Release notes](https://github.com/seagullslayer7/JuicyCensor/releases/tag/studio-v1.0.0)
 
-![The Subtitles & Translation workspace](assets/subtitles-3.0.0.png)
+![Juicy Studio's Edit workspace with a demonstration project](assets/studio-edit-1.0.0.png)
 
-<p align="center"><sub>JuicyCensor 3.0.0 with illustrative subtitles in a demonstration clip.</sub></p>
+*Separate video/audio lanes, a shared project, and compact controls. Demonstration media and subtitles shown.*
 
-## Meet JuicyCensor 3.0
+## One project, four workspaces
 
-| Filter the Juice | Find the right words | Make it yours |
-| --- | --- | --- |
-| Detect words and phrases, adjust censor regions, and listen before exporting. | Transcribe multiple languages, edit both subtitle tracks, and review translation suggestions. | Drag timing blocks on the waveform and customize the app's colors, highlights, and spacing. |
+- **Edit** — Import media, trim, split and reorder clips. Adjust speed, clip volume and color; choose your canvas and export settings. Save `.juicy` projects with Undo/Redo and recovery copies.
+- **Censor** — Detect words and phrases, refine regions, and listen to censored playback before exporting. Choose silence, continuous/pulsed tones or a custom sound.
+- **Subtitles & Translation** — Transcribe multiple languages, search dialogue, edit timing on the waveform, and style captions. Translate audio to English or review context-aware text-model suggestions.
+- **Enhance** — Upscale animation or live action, compare a short preview, and choose output resolution, codec and audio settings. Optional restoration controls help balance detail against fidelity.
+
+**Changes travel with the project.** Subtitle and censor edits follow timeline cuts, speed changes and reordering. A completed enhancement can become project media while preserving those annotations; Undo restores the previous timeline.
 
 ## Get started
 
-1. **Install** with Setup.exe, or extract the entire portable ZIP to a writable folder.
-2. **Run JuicyCensor.** First-run setup offers a private processing environment and optional starter models. Choose CPU/Vulkan or NVIDIA CUDA support.
-3. **Open a video** from File or drag it into the app. Choose **Censor** or **Subtitles & Translation** at the top.
+1. Run the installer, or extract the **entire** portable ZIP to a writable folder.
+2. Launch **Juicy Studio**. First-run setup installs a private processing environment, FFmpeg and GPU tools. Choose NVIDIA CUDA or the smaller AMD/Intel/CPU setup; starter speech models are optional.
+3. In **Edit**, import a video and double-click it to append it. Save with **Ctrl+S**, or manage saved/recent projects through **File → Projects…**.
+4. Switch workspaces to censor, subtitle or enhance. Hover over icons for explanations; **Help → User guide…** or **F1** opens the searchable in-app guides.
 
-**Windows 10 (1809+) or Windows 11, 64-bit.** NVIDIA uses CUDA; AMD and Intel use Vulkan; CPU processing is also available. Keep your graphics driver current. System Python, the CUDA Toolkit, and Visual Studio are not required. The app is unsigned, so Windows may show a publisher warning.
+**Windows 10 (1809+) / Windows 11, 64-bit.** NVIDIA speech processing uses CUDA; AMD/Intel use Vulkan; CPU speech processing is available. Keep your GPU driver current. System Python, Visual Studio and a separate CUDA Toolkit are not required. Allow several GB for runtime and model downloads. The app is unsigned, so Windows may show a publisher warning.
 
-## Censor your video
+## Subtitles that stay with your video
 
-Choose words and phrases in **Settings**, then **Analyze video**. Review the matches, add a selection with the scissors button, or drag the edges of a region on the waveform. Switch between **Original audio** and **Censored audio** to hear the result before exporting.
+![The Subtitles & Translation workspace with illustrative dialogue](assets/studio-subtitles-1.0.0.png)
 
-The included lists contain ordinary English profanity, without identity-based slurs. Add your own words and phrases for other languages. The **Transcript** tab inside Censor lets you search the detected dialogue and jump to a timestamp.
+Transcribe a video or import SRT, VTT, ASS/SSA files. Edit source and translation side by side; choose font, size and color in **Style**. The waveform loads automatically, and its timing blocks can be dragged or resized.
 
-## Subtitle and translate
+- **SRT / VTT:** plain subtitle files.
+- **ASS:** styled subtitles.
+- **MP4:** permanent captions burned into the picture; video is re-encoded.
+- **MKV:** a subtitle track that compatible players can switch on or off.
 
-1. Choose the spoken language and **Transcribe**, or import an SRT, VTT, ASS, or saved project.
-2. Edit source text and timing. Drag a waveform block to move it; drag either edge to trim it.
-3. Use **Audio → English** for local Whisper translation, or **Smart translate** for suggestions from a text model. Review and accept the suggestions you want.
-4. Choose subtitle font, size, and color in **Style**, then **Export**.
+Standalone MKV subtitle export can copy the original video/audio. A changed editing timeline must be rendered first. MP4 subtitle exports expose codec, encoder, quality/bitrate and audio controls; existing subtitle files can be used directly without transcription. External ASS/SSA styling is retained, provided its fonts are installed.
 
-| Export | What you get |
-| --- | --- |
-| SRT / VTT | Plain subtitle files. |
-| ASS | Styled subtitles. |
-| MP4 | Styled subtitles permanently rendered into the video. |
-| MKV | A switchable styled subtitle track, with original video/audio copied. |
+## Make it yours
 
-Save a **.juice.json project** with **Ctrl+S** to keep both languages, timing, style, scene notes, and pending suggestions together. Video projects also autosave locally. Undo/Redo covers subtitle text, timing, style, splits, merges, and accepted suggestions.
+**View → Appearance** offers Orange grove, Midnight, Berry and Graphite, plus color, saturation, brightness, highlight, spacing and corner controls. Save your own presets. Speaker buttons open compact vertical volume controls; preview volume does not change exported audio.
 
-## A workspace that fits
+**File → Storage & uninstall…** previews cache/alignment cleanup. Ordinary cleanup preserves projects, subtitle edits, models and exports. Installed builds also offer uninstall with data preserved, or removal of the app and its installation-local data. Full removal deletes projects and exports inside that folder; keep a separate copy of anything you want to retain.
 
-Use **View → Appearance** to preview Orange grove, Midnight, Berry, or Graphite, then adjust colors, saturation, brightness, highlights, spacing, and corners. Save your own named presets or reset to Orange. Cancel restores your previous look. Subtitle styling is controlled separately in **Style**.
+## Models and translation
 
-<details>
-<summary><strong>See appearance and export settings</strong></summary>
+The optional starter model is multilingual **base**. Larger models such as **small**, **medium** and **large-v3** may recognize speech more accurately, at higher memory/storage cost. Missing models can download later; compatible cached downloads are reused. NVIDIA/CPU and Vulkan use different model formats. English-only `.en` models are unsuitable for other languages.
 
-![Appearance controls with live color previews](assets/appearance-3.0.0.png)
+**Quiet speech / whispers** bypasses voice-activity filtering on NVIDIA/CPU; Vulkan already runs without it. Always review the result for missed or invented dialogue. Automatic censorship may also need a downloadable word-alignment model. Default word lists contain ordinary English profanity, without identity-based slurs; customize them in Settings.
 
-![Export settings](assets/settings-export.png)
+**Local by default:** audio-to-English translation uses Whisper. Smart Translate needs a separately installed local text-model server, or an optional compatible online provider with your API key. Online translation sends selected subtitle text and context, not video/audio. Keys remain in memory for the app session. Suggestions stay separate until accepted; provider charges may apply.
 
-Export presets cover resolution from 480p to 4K, quality, frame rate, video encoder, audio, and destination. Changing individual values switches the preset to Custom. Keep original video quality avoids video re-encoding for censor exports; subtitle burn-in requires encoding.
+## Current limits
 
-</details>
+Juicy Studio 1.0 is an editing foundation. Video/audio lanes organize a linked sequence: overlapping layers, independent audio mixing, transitions and keyframes are not implemented yet. Clip color adjustments apply during rendering; the source preview shows original color. HDR timeline export is not supported.
 
-<details>
-<summary><strong>Models, languages, and quiet speech</strong></summary>
+AI enhancement cannot guarantee new detail or correct anatomy and may introduce artifacts. Review a moving preview before a full export. Available restoration options differ by GPU/backend. See the [editing guide](EDITOR-DEVELOPMENT.md) and [enhancement guide](ENHANCE-DEVELOPMENT.md) for details.
 
-- The optional starter speech model is multilingual **base**. Skipping it saves the initial download; selecting a missing model later can require a download.
-- Larger multilingual models such as **small**, **medium**, and **large-v3** can improve recognition, with higher memory and storage needs. Results depend on the audio.
-- NVIDIA/CPU and Vulkan use different model formats. Matching downloads are reused. NVIDIA/CPU models download when needed; use Settings to download a Vulkan model.
-- English-only **.en** models cannot process other languages or automatic language detection. When upgrading from 2.x, choose a multilingual model and the appropriate speech language.
-- **Quiet speech / whispers** disables voice-activity filtering for subtitle recognition on NVIDIA/CPU. Vulkan already runs without that filter. Review quiet sections for missed or invented speech.
-- Automatic censorship also needs a compatible word-alignment model, which may download on first use. Subtitle transcription does not require forced alignment.
+## Updating and support
 
-![Processing and model settings](assets/settings-processing.png)
+The Studio installer updates earlier **Juicy Studio previews** while retaining local data. JuicyCensor uses a separate installation: back up its settings, lists, projects and media before moving them. The old releases remain in [release history](https://github.com/seagullslayer7/JuicyCensor/releases).
 
-</details>
+For portable updates, close the app, back up its folder, then replace application files while preserving settings, projects and runtime/model folders. Downloading a ZIP alone does not update an installation.
 
-<details>
-<summary><strong>Translation, privacy, and editor details</strong></summary>
-
-**Local by default.** Audio → English uses Whisper on your PC. Smart translate can use a separately installed local text-model server, such as Ollama or a compatible server, to translate or refine text with nearby lines and **Edit → Scene notes**. Text models are optional and are not bundled.
-
-**Optional online AI.** Smart translate can use a compatible HTTPS chat-completions service with your own API key. The dialog explains which subtitle text and context will be sent; it does not upload video or audio. API keys stay in memory for that app session. Provider charges may apply.
-
-Suggestions do not overwrite source text or timing. Review them before accepting, especially for quiet dialogue, ambiguous names, or incomplete sentences. Select lines to process a group; clear the selection to process all lines.
-
-**Timing and navigation.** The waveform loads automatically in the background. Scroll to zoom, Shift+scroll to pan, and click the ruler to seek. Its height slider makes quiet audio easier to see without changing playback volume. Esc cancels a timing drag. Hover over pane edges to resize; View → Reset panel layout restores the defaults. F11 toggles full screen. The queue's × button removes an entry while keeping the video and saved edits.
-
-**Format details.** Source and translation export separately. Incomplete translation tracks must be filled before export. ASS import reads text and timing; imported styles and complex effects are not retained. MP4 burn-in re-encodes the picture and copies compatible audio. MKV playback styling depends on the player and available fonts.
-
-**Separate workspaces.** The subtitle editor uses its own transcription or imported subtitles; it does not automatically reuse the Censor transcript. Censored playback prepares a cached copy using the export filters, so the first preview needs processing time and temporary disk space.
-
-</details>
-
-<details>
-<summary><strong>Updating from an earlier version</strong></summary>
-
-Close JuicyCensor and run the 3.0.0 installer into your existing installation folder. It replaces application files while preserving settings, word lists, appearance preferences, projects, and downloaded models/runtime files. Existing compatible processing environments are reused.
-
-For a portable update, back up your folder first. Preserve `config.json`, `banned_words.txt`, `banned_phrases.txt`, `appearance.json`, projects, and your existing cache/model/runtime folders while replacing the application files. Downloading a ZIP alone does not update an installation; extract and copy its contents, or use the installer.
-
-</details>
-
-## Project
-
-[Report an issue](https://github.com/seagullslayer7/JuicyCensor/issues) · [Release history](https://github.com/seagullslayer7/JuicyCensor/releases) · [Build instructions](BUILDING.md) · [Validation](VALIDATION.md) · [Third-party licenses](THIRD-PARTY.md)
+[Report an issue](https://github.com/seagullslayer7/JuicyCensor/issues) · [Build from source](BUILDING.md) · [Validation](VALIDATION.md) · [Licenses](THIRD-PARTY.md) · [Editor roadmap](EDITOR-ROADMAP.md)

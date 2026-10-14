@@ -12,11 +12,11 @@ version_info = VSVersionInfo(
     ffi=FixedFileInfo(filevers=version_tuple, prodvers=version_tuple,
                      mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0, 0)),
     kids=[StringFileInfo([StringTable('040904B0', [
-        StringStruct('FileDescription', 'JuicyCensor'),
+        StringStruct('FileDescription', 'Juicy Studio'),
         StringStruct('FileVersion', version),
-        StringStruct('ProductName', 'JuicyCensor'),
+        StringStruct('ProductName', 'Juicy Studio'),
         StringStruct('ProductVersion', version),
-        StringStruct('OriginalFilename', 'JuicyCensor.exe'),
+        StringStruct('OriginalFilename', 'JuicyStudio.exe'),
     ])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])],
 )
 a = Analysis([str(root / 'JuicyCensorApp.py')], pathex=[str(root / 'vendor')],
@@ -30,8 +30,8 @@ a = Analysis([str(root / 'JuicyCensorApp.py')], pathex=[str(root / 'vendor')],
 a.binaries = [entry for entry in a.binaries
               if Path(entry[0]).name.lower() != 'icuuc.dll']
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='JuicyCensor',
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='JuicyStudio',
           debug=False, strip=False, upx=False, console=False,
           version=version_info, icon=str(root / 'assets' / 'orange.ico'))
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False,
-               name='JuicyCensor')
+               name='JuicyStudio')

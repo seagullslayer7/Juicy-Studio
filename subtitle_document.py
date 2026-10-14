@@ -24,7 +24,7 @@ def cue(start, end, text='', translation=''):
 
 def validate_document(doc):
     if not isinstance(doc, dict) or doc.get('schema') != 1 or not isinstance(doc.get('cues'), list):
-        raise ValueError('This is not a supported JuicyCensor subtitle project.')
+        raise ValueError('This is not a supported Juicy Studio subtitle project.')
     ids = set()
     for item in doc['cues']:
         if not isinstance(item, dict) or not {'start','end','source','id'} <= item.keys():

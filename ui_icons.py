@@ -26,6 +26,12 @@ def tool_icon(name, primary=False):
         line(4,8,8,4); line(4,8,8,12); line(4,8,12,8); p.drawArc(9,8,7,8,-90*16,180*16)
     elif name == 'fit':
         for a,b,c,d in ((3,7,3,3),(3,3,7,3),(13,3,17,3),(17,3,17,7),(3,13,3,17),(3,17,7,17),(13,17,17,17),(17,13,17,17)): line(a,b,c,d)
+    elif name in ('move_left','move_right'):
+        if name == 'move_right': p.translate(20,0); p.scale(-1,1)
+        line(4,10,16,10); line(4,10,9,5); line(4,10,9,15)
+    elif name in ('zoom_in','zoom_out'):
+        p.drawEllipse(3,3,10,10); line(12,12,17,17); line(5,8,11,8)
+        if name == 'zoom_in': line(8,5,8,11)
     elif name in ('open','queue'):
         if name == 'open':
             p.drawPolyline(QPolygonF([QPointF(3,16),QPointF(3,4),QPointF(8,4),QPointF(10,6),QPointF(17,6),QPointF(17,16),QPointF(3,16)]))
@@ -37,6 +43,9 @@ def tool_icon(name, primary=False):
         line(4,12,4,17); line(4,17,16,17); line(16,17,16,12); line(10,13,10,3); line(6,7,10,3); line(14,7,10,3)
     elif name in ('play','preview'):
         p.drawPolygon(QPolygonF([QPointF(6,4),QPointF(16,10),QPointF(6,16)]))
+    elif name == 'play_line':
+        line(2,4,2,16); line(18,4,18,16)
+        p.drawPolygon(QPolygonF([QPointF(7,5),QPointF(14,10),QPointF(7,15)]))
     elif name == 'wave':
         for x,h in ((3,3),(6,6),(10,8),(14,5),(17,2)): line(x,10-h,x,10+h)
     elif name in ('transcribe','analyze'):
@@ -57,6 +66,13 @@ def decorate(button, name, primary=False):
     button.setIcon(tool_icon(name,primary)); button.setIconSize(QSize(18,18))
     if not button.accessibleName(): button.setAccessibleName(button.toolTip() or button.text())
     return button
+
+
+def icon_only(button, name):
+    """Keep the action's explanation available to mouse and screen-reader users."""
+    button.setAccessibleName(button.toolTip() or button.text())
+    button.setText(''); button.setObjectName('iconTool'); button.setFixedSize(36,34)
+    return decorate(button,name,bool(button.property('primary')))
 
 
 def decorate_text(button, text, primary=False):

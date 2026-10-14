@@ -1,3 +1,51 @@
+# Juicy Studio 1.0.0
+
+JuicyCensor becomes **Juicy Studio**, bringing editing, censorship, multilingual subtitles, translation and enhancement into one shared project.
+
+## Editing and projects
+
+- Edit opens first, with a media bin, linked video/audio lanes and a preview player.
+- Trim, split, reorder and remove clips, with Undo/Redo. Adjust speed, volume, color, canvas and output frame rate.
+- Save `.juicy` projects. The Projects window offers recent files, search and recovery copies; missing media can be relinked.
+- Censor and subtitle edits follow timeline cuts and speed changes across workspaces. Enhanced output can become project media; Undo restores the previous timeline.
+- Separate video/audio lanes have add/remove controls. They organize a linked sequence; overlapping layers and independent audio mixing remain future work.
+
+## Enhancement and export
+
+- Local animation/live-action upscaling, target resolutions through 4K, short before/after previews and finished-output playback.
+- Persistent NVIDIA inference and pipeline improvements, source-color handling and source-guided blending.
+- Optional BSRGAN/SwinIR whole-frame restoration, GFPGAN face restoration, bounded texture recovery and structure protection on supported backends.
+- H.264, H.265/HEVC and AV1 options, quality/bitrate controls, stereo audio and output FPS conversion. FPS conversion repeats/drops frames; it does not generate motion.
+- Elapsed/remaining-time progress and preview-based size estimates. AI restoration can introduce artifacts and cannot guarantee detail or anatomy.
+
+## Subtitles, playback and interface
+
+- Video exports accept an editor track or an existing SRT/VTT/ASS/SSA file, with dedicated video/audio controls.
+- Standalone MKV subtitle export can preserve source streams and add a switchable subtitle track.
+- Audio-output selection and reconnection, compact vertical volume popups and improved preview playback.
+- Aligned headers, icon toolbars, hover explanations and searchable built-in guides.
+- Fixed dark-theme guide text and bundled SVG rendering. Updated README, screenshots, branding, executable metadata and installer for 1.0.0.
+
+## Installation and maintenance
+
+- Repaired private Python environment creation to avoid Windows untrusted-mount-point errors during setup.
+- Per-user installation; optional model downloads and reuse of compatible cached files. System Python, Visual Studio and a separate CUDA Toolkit are not required.
+- Storage cleanup previews temporary files, speech alignments and logs while keeping saved work/models. Linked folders are skipped.
+- Uninstall can retain local data or remove installation-owned runtime, models, settings, projects and exports after confirmation. External files are preserved.
+- Studio previews update under the same installer identity. JuicyCensor remains separate; old releases stay available.
+
+## Downloads and limits
+
+Use **Setup.exe** to install, **Portable.zip** for a complete portable app, or **Source.zip** to build it yourself. SHA256SUMS.txt covers all three. First launch downloads the selected processing environment; models require additional space. Windows 10 (1809+) / Windows 11 x64; unsigned installer.
+
+The release is checked with the automated suite, synthetic playback/export, shared-project timing, switchable MKV subtitles, cleanup boundaries, resizing and packaged UI checks. See VALIDATION.md for exact checks.
+
+No layered compositing, independent audio mixing, transitions or keyframes yet. HDR timeline export is unsupported. Clip color edits render at export; the source preview shows original color. Smart translation suggestions need review; optional online AI uses the user's own key.
+
+---
+
+## JuicyCensor release history
+
 # JuicyCensor 3.0.0
 
 JuicyCensor now brings censorship, multilingual subtitles, translation, and a customizable editing workspace together in one Windows app.

@@ -178,7 +178,7 @@ QTabBar#editorTabs::tab {{ padding: 6px 10px; }}
 QProgressBar {{ color: {_current['on_progress']}; }}
 QCheckBox {{ spacing: 8px; }}
 QSlider#appearanceSlider::groove:horizontal {{ height: 4px; border-radius: 2px; }}
-QSlider#appearanceSlider::handle:horizontal {{ width: 10px; margin: -4px 0; border-radius: 6px; }}
+QSlider#appearanceSlider::handle:horizontal {{ width: 8px; height: 8px; margin: -3px 0; border-radius: 5px; }}
 '''
     if settings['density']=='compact':
         css+='QTableWidget#subtitleTable::item { padding: 5px 8px; } QMenu::item { padding: 6px 16px; }'

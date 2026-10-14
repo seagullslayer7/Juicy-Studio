@@ -1,4 +1,5 @@
 """Enhancement workspace: shared queue, paired preview, optional local models."""
+from playback_controls import VolumeControl
 from pathlib import Path
 from uuid import uuid4
 
@@ -222,7 +223,8 @@ class EnhanceWorkspace(QWidget):
         self.comparison_zoom.setToolTip('Magnify the same area in both panels to compare texture and edges. Drag either image to pan. This changes only the view, not the export.')
         self.comparison_zoom.currentIndexChanged.connect(lambda:[view.set_zoom(self.comparison_zoom.currentData()) for view in self.comparison_views])
         controls.addWidget(self.comparison_zoom)
-        self.mute = action('Sound on',self.toggle_mute,'Toggle sound. Uses the generated file’s audio when available, otherwise the original; never plays both at once.')
+        self.volume_control = VolumeControl(self,host,self.change_preview_volume,60)
+        self.mute = self.volume_control.button
         controls.addWidget(self.mute); layout.addLayout(controls)
         footer = QHBoxLayout(); footer.setSpacing(12)
         footer.addWidget(QLabel('Preview starts at'))
@@ -236,6 +238,8 @@ class EnhanceWorkspace(QWidget):
         self.preview_button = action('Generate preview',self.generate_preview,'Enhance only this short section and compare before exporting',True)
         self.export_button = action('Export enhanced video…',self.export,'Enhance the complete selected file using the chosen video, audio, and format settings')
         footer.addWidget(self.preview_button); footer.addWidget(self.export_button); layout.addLayout(footer)
+        self.apply_project_button=action('Apply enhanced video to project',lambda:self.host.project_session.apply_enhancement(),'Use the full enhanced export as project media, retaining editable subtitles and censor regions. Undo restores the original timeline.')
+        self.apply_project_button.setEnabled(False);layout.addWidget(self.apply_project_button)
         self.hint = QLabel('Select a video from the shared queue. Export censor edits first; add subtitle burn-in after upscaling.')
         self.hint.setWordWrap(True); self.hint.setObjectName('muted'); layout.addWidget(self.hint)
         self.size_hint=QLabel('Generate a short preview to estimate the full export size.');self.size_hint.setObjectName('muted');self.size_hint.setWordWrap(True);layout.addWidget(self.size_hint)
@@ -414,6 +418,7 @@ class EnhanceWorkspace(QWidget):
         elif data['type'] == 'enhance_installed':
             self.host.set_status('Enhancement engine and models installed. Generate a short preview to begin.')
         elif data['type'] in ('enhance_preview','enhance_exported'):
+            if data['type']=='enhance_exported' and hasattr(self.host,'project_session'):self.host.project_session.enhanced_result(data)
             self.pause(); self.preview_path = data['output']; self.preview_start = data['start']; self.preview_length = data['length']
             self.update_audio_source()
             self.preview_pending = True
@@ -482,9 +487,12 @@ class EnhanceWorkspace(QWidget):
             self.pause(); return
         if abs(self.enhanced.position()-position) > 100: self.enhanced.setPosition(max(0,position))
 
+    def change_preview_volume(self,value):
+        self.audio.setVolume(value/100); self.result_audio.setVolume(value/100)
+        self.sound_muted=value==0; self.update_audio_source()
+
     def toggle_mute(self):
-        self.sound_muted = not self.sound_muted
-        self.update_audio_source(); self.mute.setText('Sound off' if self.sound_muted else 'Sound on')
+        self.volume_control.toggle_mute()
 
     def update_audio_source(self):
         self.audio.setMuted(self.sound_muted or bool(self.preview_path))
@@ -516,6 +524,9 @@ class EnhanceWorkspace(QWidget):
         installed = self.installed()
         self.install_button.setVisible(not installed); self.install_button.setEnabled(not busy)
         self.preview_button.setEnabled(available and installed); self.export_button.setEnabled(available and installed)
+        session=getattr(self.host,'project_session',None)
+        self.apply_project_button.setVisible(bool(session and self.host.editor.doc['clips']))
+        self.apply_project_button.setEnabled(not busy and bool(session and session.can_apply_enhancement()))
         for control in (self.play_button,self.seek,self.start,self.at_playhead,self.length): control.setEnabled(available)
 
     def shutdown(self):

@@ -1,6 +1,6 @@
-# Building JuicyCensor 3.0.0
+# Building Juicy Studio 1.0.0
 
-Use Windows x64, Python 3.12.14 for the frozen GUI, PyInstaller 6.21.0, PySide6 6.11.2,
+Use Windows x64, Python 3.12.x for the frozen GUI, PyInstaller 6.21.0, PySide6 6.11.2,
 and Inno Setup 7.1.0. The private processing environment uses Python 3.12.14.
 
 ```powershell
@@ -36,7 +36,7 @@ Git metadata or reports. build_release.py uses an explicit allowlist.
 ## Publishing on GitHub
 
 1. Set `release-manifest.json` to the reviewed release version, then commit and push the reviewed source to the project repository.
-2. Tag that exact commit with the matching version and `v` prefix, then push the tag.
+2. Tag that exact commit with the matching product tag, `studio-v1.0.0` for Juicy Studio 1.0, then push the tag.
 3. The release workflow builds artifacts and creates a **draft** GitHub Release.
 4. Review its assets, notes and validation results, then publish it. Mark it latest.
 
@@ -51,7 +51,7 @@ extraction mode for verification; it suppresses registry entries and shortcuts.
 The portable ZIP is the recommended portable distribution.
 
 For unattended runtime verification, explicitly opt in with
-`JuicyCensor.exe --setup-runtime cpu --skip-models` (or `cuda`). Omit `--skip-models`
+`JuicyStudio.exe --setup-runtime cpu --skip-models` (or `cuda`). Omit `--skip-models`
 to fetch the starter models too. This downloads dependencies and logs to
 `logs/setup.log`; a zero exit code indicates success. Normal first launch always
 presents the consent/setup dialog instead.

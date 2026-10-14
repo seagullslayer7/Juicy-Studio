@@ -26,10 +26,10 @@ class SetupWizard(QDialog):
         super().__init__(parent)
         self.root, self.thread = Path(root), None
         version = json.loads((self.root / 'release-manifest.json').read_text(encoding='utf-8'))['version']
-        self.setWindowTitle(f'JuicyCensor {version} · First-run setup')
+        self.setWindowTitle(f'Juicy Studio {version} · First-run setup')
         self.resize(700, 590)
         layout = QVBoxLayout(self)
-        title = QLabel('Let’s get JuicyCensor ready')
+        title = QLabel('Let’s get Juicy Studio ready')
         title.setObjectName('sectionTitle')
         layout.addWidget(title)
         note = QLabel('Download a private Python environment, verified processing packages, FFmpeg and the Vulkan runtime. Nothing is added to your system Python or PATH.\n\nAllow several GB of free space. NVIDIA needs the larger CUDA download. Starter models add download time; you can skip them and download models when needed.\n\nKeep your GPU driver up to date using NVIDIA, AMD or Intel’s own installer. A separate CUDA Toolkit or Visual Studio is not required.')

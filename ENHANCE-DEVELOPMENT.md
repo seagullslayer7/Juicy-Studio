@@ -1,8 +1,7 @@
-# Juicy Studio · Enhance development preview
+# Juicy Studio · Enhancement guide
 
-This branch adds a working enhancement prototype and the Juicy Studio preview
-branding. The published JuicyCensor 3.0 release is
-unchanged. Open **View → Enhance workspace** or press **Ctrl+3**.
+Juicy Studio includes an enhancement workspace for local upscaling, restoration
+and before/after comparison. AI results depend on the source and model. Open **View → Enhance workspace** or press **Ctrl+3**.
 
 1. Add a video through File or the shared queue.
 2. Choose an AI backend. Automatic uses the installed NVIDIA CUDA runtime for

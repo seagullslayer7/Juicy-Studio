@@ -1,6 +1,6 @@
 # Third-party components
 
-JuicyCensor application code is MIT licensed; see LICENSE. This does not replace
+Juicy Studio application code is MIT licensed; see LICENSE. This does not replace
 the licenses of its dependencies.
 
 ## Included in the installer / portable ZIP
@@ -11,7 +11,7 @@ the licenses of its dependencies.
   Source: https://code.qt.io/cgit/pyside/pyside-setup.git/tag/?h=v6.11.2 and
   https://download.qt.io/archive/qt/6.11/6.11.2/submodules/ .
   License information: https://doc.qt.io/qtforpython-6/licenses.html .
-  Users can replace the dynamic libraries with compatible builds; JuicyCensor does
+  Users can replace the dynamic libraries with compatible builds; Juicy Studio does
   not prevent debugging modifications to LGPL components.
 - uv 0.12.17: MIT OR Apache-2.0. Both licenses are included in `licenses`.
   Source and build instructions: https://github.com/astral-sh/uv/tree/0.12.17 .
@@ -44,7 +44,7 @@ the licenses of its dependencies.
   https://huggingface.co/Systran/faster-whisper-base.en and
   https://pytorch.org/audio/stable/pipelines.html .
 
-The source distribution includes JuicyCensor's build specification and installer
+The source distribution includes Juicy Studio's build specification and installer
 script. Keep the licenses and notices with redistributed application files.
 
 Optional enhancement download: Real-ESRGAN ncnn Vulkan (20220424 Windows build),
@@ -52,7 +52,7 @@ including publisher-supplied models and its README retained in the installed
 directory. Engine source and MIT license:
 https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan . Model project and BSD-3-Clause
 license: https://github.com/xinntao/Real-ESRGAN . This optional archive is not
-bundled in JuicyCensor's installer.
+bundled in Juicy Studio's installer.
 
 CUDA enhancement uses adapted BSD-3-Clause network definitions in
 `enhance_networks.py`: Real-ESRGAN SRVGGNetCompact from commit

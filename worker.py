@@ -70,6 +70,9 @@ def validate_events(raw: list, duration: float):
 
 
 def run_job(job: dict):
+    if job['action'].startswith('editor_'):
+        from editor_worker import run_editor_job
+        return run_editor_job(job, emit)
     if job['action'].startswith('enhance_'):
         from enhance_worker import run_enhance_job
         return run_enhance_job(job, emit)
@@ -121,6 +124,8 @@ def run_job(job: dict):
             saved = json.loads(state_path.read_text(encoding='utf-8'))
             validate_events(saved['events'], duration)
             if 'words' in saved:
+                if job.get('preserved_events'):
+                    saved['events']=[asdict(e) for e in validate_events(saved['events']+job['preserved_events'],duration)]
                 emit('review', state=saved, state_path=str(state_path))
                 return
         audio = paths['audio_cache'] / f'{fingerprint}.wav'
@@ -152,6 +157,9 @@ def run_job(job: dict):
                  'words': [asdict(w) for w in words], 'word_count': len(words),
                  'backend': aligned['_backend'], 'alignment_device': aligned['_alignment_device'],
                  'config': config, 'schema': 3}
+        if job.get('preserved_events'):
+            combined=validate_events(state['events']+job['preserved_events'],duration)
+            state['events']=[asdict(e) for e in combined]
         atomic_json(state_path, state)
         emit('review', state=state, state_path=str(state_path))
     elif action in ('render', 'preview'):

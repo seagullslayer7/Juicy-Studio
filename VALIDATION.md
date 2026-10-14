@@ -1,4 +1,29 @@
-# JuicyCensor 3.0.0 validation
+# Juicy Studio 1.0.0 validation
+
+Release checks on Windows x64, October 13, 2026.
+
+- **138 automated tests passed**, covering processing and export behavior, project time mapping, history, model/cache integrity, setup recovery, audio reconnection, track assignment/removal, cleanup boundaries and dark-theme guide rendering.
+- Synthetic media checks verified timeline playback across cuts, mixed dimensions/frame rates, speed changes, silent sources, stereo audio, censor muting and generated tones.
+- Shared project checks verified subtitle/censor timing through edits, save/reopen, applying an enhanced fixture, restoring the original timeline, and MKV exports with a switchable ASS track.
+- Track/header geometry and icon accessibility were checked at 1280×720, 1500×950 and 1900×1050. Volume popup mute/restore and compact handle sizes were checked.
+- The README was rendered with the actual dark theme; its text, SVG banner, screenshots, topic navigation and search were checked. Dedicated regression tests cover invisible text and SVG resources.
+- Installer/portable/source artifacts are built from an explicit allowlist; private paths, credentials, runtime overrides, caches, models and personal media are excluded. Checksums cover the downloadable files.
+
+Packaged first-run setup and guide diagnostics are run before publication.
+Installer extraction tests suppress registry/shortcut changes. Normal uninstall
+registration and the destructive full-data removal flow have not been exercised
+on a real user installation. Fresh processing downloads and every GPU/driver
+combination have not been re-tested for this release. Earlier CPU/CUDA/Vulkan
+speech and enhancement checks are retained below as historical evidence.
+
+This is an editing foundation: no overlapping layers, independent audio mixing,
+transitions or keyframes yet. HDR timeline export is unsupported. Color edits
+render at export; the source preview shows original color. AI output and
+translation need review. Timing and size estimates are approximate.
+
+---
+
+# Historical JuicyCensor 3.0.0 validation
 
 Release checks on Windows x64, September 27, 2026.
 

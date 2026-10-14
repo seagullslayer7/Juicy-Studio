@@ -50,5 +50,14 @@ class SetupRecoveryTests(unittest.TestCase):
             self.installer.install_private_python('uv.exe', '3.12.14')
             self.assertEqual(command.call_count, 1)
 
+    def test_environment_uses_concrete_python_and_repairs_existing_home(self):
+        python = self.installer.root / 'runtime/python/cpython-3.12.14-windows-x86_64-none/python.exe'
+        with patch.object(self.installer, 'command') as command:
+            for _ in range(2):
+                result = self.installer.prepare_environment(python)
+            self.assertEqual(command.call_count, 2)
+            command.assert_called_with([python, '-I', '-m', 'venv', '--copies', '--without-pip', self.installer.root / 'venv'])
+            self.assertEqual(result, self.installer.root / 'venv/Scripts/python.exe')
+
 if __name__ == '__main__':
     unittest.main()

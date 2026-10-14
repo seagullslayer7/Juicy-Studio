@@ -9,6 +9,7 @@ appearance.json
 cache/
 logs/
 outputs/
+projects/
 models/
 tools/
 _internal/
@@ -19,3 +20,4 @@ JuicyCensor.exe
 bootstrap-tools/uv.exe
 *.partial
 Thumbs.db
+JuicyStudio.exe

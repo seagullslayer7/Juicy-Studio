@@ -27,7 +27,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from processing_time import RemainingTime, format_duration
 from audio_timeline import Timeline
 from audio_waveform import WaveformLoader
-from ui_icons import decorate_text, decorate, tool_icon
+from ui_icons import decorate_text, decorate, tool_icon, icon_only
 from appearance import color as theme_color, apply_theme, load_preferences, AppearanceDialog
 
 VERSION = json.loads((ROOT / 'release-manifest.json').read_text(encoding='utf-8'))['version']
@@ -383,17 +383,27 @@ QScrollBar:horizontal { background: #24291b; height: 12px; border: 1px solid #51
 QScrollBar::handle:horizontal { background: #7a874e; min-width: 24px; border-radius: 4px; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-QSlider::groove:horizontal { height: 6px; background: #414a2c; border-radius: 3px; }
+QSlider::groove:horizontal { height: 4px; background: #414a2c; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: #ff9f24; border-radius: 3px; }
-QSlider::handle:horizontal { background: #ffc563; border: 1px solid #ff9f24; width: 14px; margin: -5px 0; border-radius: 7px; }
+QSlider::handle:horizontal { background: #ffc563; border: 1px solid #ff9f24; width: 8px; height: 8px; margin: -3px 0; border-radius: 5px; }
+QSlider::groove:vertical { width: 4px; background: #414a2c; border-radius: 2px; margin: 6px 0; }
+QSlider::sub-page:vertical { background: #414a2c; border-radius: 2px; }
+QSlider::add-page:vertical { background: #ff9f24; border-radius: 2px; }
+QSlider::handle:vertical { background: #ffc563; border: 1px solid #ff9f24; height: 8px; margin: 0 -3px; border-radius: 5px; }
+QSlider::handle:horizontal:hover, QSlider::handle:vertical:hover { background: #ffd18a; }
+QSlider::handle:horizontal:pressed, QSlider::handle:vertical:pressed { background: #ffb647; }
 QSlider#waveformGain::groove:horizontal { height: 4px; border-radius: 2px; }
 QSlider#waveformGain::sub-page:horizontal { border-radius: 2px; }
-QSlider#waveformGain::handle:horizontal { width: 10px; margin: -4px 0; border-radius: 6px; }
+QSlider#waveformGain::handle:horizontal { width: 8px; height: 8px; margin: -3px 0; border-radius: 5px; }
 QSlider#waveformGain::handle:horizontal:hover { background: #ffd18a; border-color: #ffc563; }
 QSlider#waveformGain::handle:horizontal:pressed { background: #ffb647; }
+QPushButton#iconTool { padding: 0; min-width: 34px; max-width: 34px; min-height: 32px; max-height: 32px; }
+QPushButton#trackButton { padding: 0; min-height: 24px; max-height: 24px; min-width: 24px; max-width: 24px; border-radius: 5px; }
+QSlider#editorVolume::groove:horizontal { height: 4px; border-radius: 2px; }
+QSlider#editorVolume::handle:horizontal { width: 8px; height: 8px; margin: -3px 0; border-radius: 5px; }
 QSlider#enhanceSeek::groove:horizontal { height: 4px; border-radius: 2px; }
 QSlider#enhanceSeek::sub-page:horizontal { border-radius: 2px; }
-QSlider#enhanceSeek::handle:horizontal { width: 10px; height: 10px; margin: -3px 0; border-radius: 5px; }
+QSlider#enhanceSeek::handle:horizontal { width: 8px; height: 8px; margin: -3px 0; border-radius: 5px; }
 QPushButton { background: #353a27; border: 1px solid #51563a; border-radius: 7px; padding: 9px 14px; font-weight: 600; }
 QPushButton:focus { border: 1px solid #ffb94f; }
 QToolTip { background: #2d3021; color: #fff4dc; border: 1px solid #64502d; padding: 6px; }
@@ -675,20 +685,21 @@ class MainWindow(QMainWindow):
         playback.addWidget(self.volume_button)
         self.volume_popup = QMenu(self)
         volume_panel = QWidget()
-        volume_row = QHBoxLayout(volume_panel)
+        volume_row = QVBoxLayout(volume_panel)
+        volume_row.setContentsMargins(12, 10, 12, 10); volume_row.setSpacing(8)
         self.mute_button = button('Mute', self.toggle_mute)
         self.mute_button.setToolTip('Mute or unmute preview audio')
         volume_row.addWidget(self.mute_button)
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider = QSlider(Qt.Orientation.Vertical)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(65)
-        self.volume_slider.setMinimumWidth(150)
+        self.volume_slider.setFixedSize(26, 112)
         self.volume_slider.setAccessibleName('Preview volume')
         self.volume_slider.setToolTip('Preview volume only; exported audio is unchanged')
         self.volume_slider.valueChanged.connect(self.change_volume)
-        volume_row.addWidget(self.volume_slider)
+        volume_row.addWidget(self.volume_slider, 0, Qt.AlignmentFlag.AlignHCenter)
         self.volume_label = QLabel('65%')
-        self.volume_label.setMinimumWidth(36)
+        self.volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         volume_row.addWidget(self.volume_label)
         volume_action = QWidgetAction(self.volume_popup)
         volume_action.setDefaultWidget(volume_panel)
@@ -718,7 +729,7 @@ class MainWindow(QMainWindow):
         speed_action.setDefaultWidget(speed_panel)
         self.speed_popup.addAction(speed_action)
         playback.addStretch()
-        playback.addWidget(button('Preview region', self.preview_region))
+        playback.addWidget(icon_only(button('Preview region', self.preview_region),'play_line'))
         preview_layout.addLayout(playback)
         self.scissors = button('', self.begin_mark)
         decorate(self.scissors, 'split')
@@ -781,6 +792,7 @@ class MainWindow(QMainWindow):
         zoom_row.addWidget(self.timeline_pan, 1)
         fit = button('Fit', lambda: self.timeline.set_view(1, 0))
         fit.setToolTip('Show the entire video timeline')
+        icon_only(fit,'fit')
         zoom_row.addWidget(fit)
         preview_layout.addLayout(zoom_row)
         self.timeline.view_changed.connect(self.sync_timeline_zoom)
@@ -864,10 +876,11 @@ class MainWindow(QMainWindow):
         fields.setSpacing(18)
         region_layout.addLayout(fields)
         region_buttons = QHBoxLayout()
-        region_buttons.addWidget(button('Apply', self.apply_region))
-        region_buttons.addWidget(button('Remove', self.remove_region))
+        region_buttons.addWidget(icon_only(button('Apply', self.apply_region),'apply'))
+        region_buttons.addWidget(icon_only(button('Remove', self.remove_region),'trash'))
+        region_buttons.addStretch()
         region_layout.addLayout(region_buttons)
-        info = QLabel('Use the scissors to mark a start, then end the censor selection.\nSelect a region, adjust Start and End, then click Apply.')
+        info = QLabel('Use the scissors to mark a start, then end the censor selection.\nSelect a region, adjust Start and End, then use the check mark to apply.')
         info.setObjectName('muted')
         info.setWordWrap(True)
         region_layout.addWidget(info)
@@ -915,6 +928,16 @@ class MainWindow(QMainWindow):
         self.enhance = EnhanceWorkspace(self, ROOT, CitrusComboBox, TimestampEdit, TriangleSpinBox)
         self.enhance.job_requested.connect(self.start_job)
         self.workspaces.addWidget(self.enhance)
+        from editor_ui import EditorWorkspace
+        self.editor = EditorWorkspace(self, ROOT, CitrusComboBox, TimestampEdit, PaneSplitter)
+        self.editor.job_requested.connect(self.start_job)
+        self.workspaces.addWidget(self.editor)
+        from project_session import ProjectSession
+        self.project_session=ProjectSession(self,ROOT)
+        for i in range(3): self.workspace_tabs.setTabData(i, i)
+        self.workspace_tabs.insertTab(0, 'Edit')
+        self.workspace_tabs.setTabData(0, 3)
+        self.workspace_tabs.setTabToolTip(0, 'Edit your video project · Ctrl+4')
         self.workspace_tabs.currentChanged.connect(self.switch_workspace)
         statusbar = QHBoxLayout()
         statusbar.setSpacing(16)
@@ -945,8 +968,10 @@ class MainWindow(QMainWindow):
         self.waveform.status.connect(self.waveform_status)
         self.build_menus()
         self.update_controls()
+        self.select_workspace(3)
 
     def build_menus(self):
+        from maintenance_ui import show_maintenance
         self.menu_bindings = []
         def add(menu, text, callback, shortcut=None):
             item = menu.addAction(text)
@@ -961,19 +986,29 @@ class MainWindow(QMainWindow):
             self.menu_bindings.append((item, control, subtitle_only))
             return item
         file_menu = self.command_menu.addMenu('&File')
+        add(file_menu, 'Projects…', self.editor.projects, 'Ctrl+Shift+L')
+        add(file_menu, 'New editing project', lambda: (self.select_workspace(3), self.editor.new_project()), 'Ctrl+N')
+        add(file_menu, 'Open editing project…', lambda: (self.select_workspace(3), self.editor.open_project()), 'Ctrl+Shift+P')
+        add(file_menu, 'Recover autosaved edit…', lambda: (self.select_workspace(3), self.editor.open_project(recovery=True)))
         self.open_video_action = add(file_menu, 'Open &video…', self.add_dialog, 'Ctrl+O')
         bind(file_menu, 'Open &subtitles or project…', self.subtitles.import_button, 'Ctrl+Shift+O', False, self.open_subtitle_document)
-        bind(file_menu, '&Save subtitle project…', self.subtitles.save_button, 'Ctrl+S')
+        self.save_project_action=add(file_menu, '&Save project…', self.save_current_project, 'Ctrl+S')
         file_menu.addSeparator()
-        bind(file_menu, 'Export subtitles or video…', self.subtitles.export_button, 'Ctrl+E')
+        add(file_menu, 'Export…', lambda: self.editor.export() if self.workspaces.currentIndex()==3 else self.subtitles.export_menu() if self.workspaces.currentIndex()==1 else self.enhance.export() if self.workspaces.currentIndex()==2 else self.render(), 'Ctrl+E')
         bind(file_menu, 'Export censored video…', self.render_btn, subtitle_only=False)
         add(file_menu, 'Open output folder', self.open_outputs)
         file_menu.addSeparator()
+        add(file_menu, 'Storage & uninstall…', lambda: show_maintenance(self, ROOT))
+        file_menu.addSeparator()
         add(file_menu, 'E&xit', self.close, 'Ctrl+Q')
         edit_menu = self.command_menu.addMenu('&Edit')
+        add(edit_menu, 'Undo', lambda: self.editor.undo() if self.workspaces.currentIndex()==3 or self.project_session.path else self.subtitles.undo() if self.workspaces.currentIndex()==1 else None, 'Ctrl+Z')
+        add(edit_menu, 'Redo', lambda: self.editor.redo() if self.workspaces.currentIndex()==3 or self.project_session.path else self.subtitles.redo() if self.workspaces.currentIndex()==1 else None, 'Ctrl+Shift+Z')
+        add(edit_menu, 'Split timeline clip', self.editor.split_clip)
+        add(edit_menu, 'Restore timeline before enhancement', self.project_session.restore_before_enhancement)
         for text, control, shortcut in (
-            ('&Undo subtitle edit', self.subtitles.undo_button, 'Ctrl+Z'),
-            ('&Redo subtitle edit', self.subtitles.redo_button, 'Ctrl+Shift+Z'),
+            ('&Undo subtitle edit', self.subtitles.undo_button, None),
+            ('&Redo subtitle edit', self.subtitles.redo_button, None),
             ('Add line at playhead', self.subtitles.add_button, None),
             ('Split selected line', self.subtitles.split_button, None),
             ('Merge selected lines', self.subtitles.merge_button, None),
@@ -983,9 +1018,10 @@ class MainWindow(QMainWindow):
         bind(edit_menu, 'Scene notes…', self.subtitles.context_button)
         self.queue_btn = add(edit_menu, 'Analyze video queue', self.analyze_queue)
         view_menu = self.command_menu.addMenu('&View')
-        add(view_menu, 'Censor workspace', lambda: self.workspace_tabs.setCurrentIndex(0), 'Ctrl+1')
-        add(view_menu, 'Subtitles && Translation workspace', lambda: self.workspace_tabs.setCurrentIndex(1), 'Ctrl+2')
-        add(view_menu, 'Enhance workspace', lambda: self.workspace_tabs.setCurrentIndex(2), 'Ctrl+3')
+        add(view_menu, 'Edit workspace', lambda: self.select_workspace(3), 'Ctrl+4')
+        add(view_menu, 'Censor workspace', lambda: self.select_workspace(0), 'Ctrl+1')
+        add(view_menu, 'Subtitles && Translation workspace', lambda: self.select_workspace(1), 'Ctrl+2')
+        add(view_menu, 'Enhance workspace', lambda: self.select_workspace(2), 'Ctrl+3')
         view_menu.addSeparator()
         queue_action = self.queue_dock.toggleViewAction()
         queue_action.setShortcut(QKeySequence('Ctrl+L'))
@@ -1004,10 +1040,18 @@ class MainWindow(QMainWindow):
         self.runtime_button = add(settings_menu, 'Runtime setup…', self.setup_runtime)
         self.runtime_button.setToolTip('Install, repair, or switch the CPU/AMD and NVIDIA environments')
         help_menu = self.command_menu.addMenu('&Help')
-        add(help_menu, 'User guide', lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT/'README.md'))))
-        add(help_menu, f'About {PRODUCT_NAME}', lambda: QMessageBox.about(self, f'About {PRODUCT_NAME}', f'{PRODUCT_NAME} {VERSION}\n\nFilter the Juice.\nCensor, subtitle, translate, and enhance with local processing.\n\nVideo editor development preview.'))
+        add(help_menu, 'User guide…', self.open_user_guide, 'F1')
+        add(help_menu, f'About {PRODUCT_NAME}', lambda: QMessageBox.about(self, f'About {PRODUCT_NAME}', f'{PRODUCT_NAME} {VERSION}\n\nFilter the Juice.\nCensor, subtitle, translate, and enhance with local processing.\n\nJuicy Studio 1.0 · Edit, censor, subtitle, translate and enhance.'))
         for menu in (file_menu, edit_menu, view_menu, settings_menu):
             menu.aboutToShow.connect(self.sync_menu_actions)
+
+    def open_user_guide(self):
+        from help_ui import HelpDialog
+        dialog = getattr(self, 'help_dialog', None)
+        if dialog is None:
+            dialog = HelpDialog(self, ROOT); self.help_dialog = dialog
+            dialog.finished.connect(lambda *_: setattr(self, 'help_dialog', None))
+        dialog.show(); dialog.raise_(); dialog.activateWindow()
 
     def sync_menu_actions(self):
         subtitle_mode = self.workspaces.currentIndex() == 1
@@ -1018,8 +1062,15 @@ class MainWindow(QMainWindow):
             self.open_video_action.setEnabled(self.process is None)
 
     def open_subtitle_document(self):
-        self.workspace_tabs.setCurrentIndex(1)
+        self.select_workspace(1)
         self.subtitles.open_document()
+
+    def save_current_project(self):
+        if not self.subtitles.commit_edit():return
+        self.project_session.sync_subtitles(self.subtitles.doc)
+        if self.workspaces.currentIndex()==0:self.project_session.sync_censors(self.state)
+        if self.editor.doc['clips']:self.editor.save_project()
+        else:self.subtitles.save_document()
 
     def open_appearance(self):
         if self.appearance_dialog is not None:
@@ -1064,18 +1115,34 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
         self.sync_menu_actions()
 
+    def select_workspace(self, index):
+        for tab in range(self.workspace_tabs.count()):
+            if self.workspace_tabs.tabData(tab)==index:
+                self.workspace_tabs.setCurrentIndex(tab); return
+
     def switch_workspace(self, index):
+        previous_workspace=self.workspaces.currentIndex()
+        index = self.workspace_tabs.tabData(index)
         self.player.pause()
+        self.editor.player.pause()
         self.enhance.pause()
         self.subtitles.player.pause()
         self.subtitles.commit_edit()
+        self.project_session.sync_subtitles(self.subtitles.doc)
+        if self.workspaces.currentIndex()==0:self.project_session.sync_censors(self.state)
         if index != 1:
             self.subtitles.deactivate_preview()
         self.workspaces.setCurrentIndex(index)
         if index == 1:
             self.subtitles.activate_preview()
         self.analyze_btn.setVisible(index == 0)
+        self.filename.setVisible(index != 3)
+        self.queue_toggle.setVisible(index != 3)
         self.queue_btn.setVisible(index == 0)
+        if index in (0,1,2) and self.editor.doc['clips']:
+            self.project_session.prepare()
+        elif index==3 and previous_workspace in (0,1) and not self.project_session.path and not self.editor.doc['clips'] and self.selected_path() and not self.process:
+            self.editor.import_media([self.selected_path()],append=True)
         self.update_controls()
 
     def set_status(self, message):
@@ -1298,11 +1365,16 @@ class MainWindow(QMainWindow):
             self.remaining_label.setText('Measuring enhancement speed…' if self.job.get('action') in ('enhance_preview','enhance_export') else 'Reading video length…' if self.job.get('action') in ('analyze', 'render', 'preview') else 'Preparing estimate…' if self.job.get('action','').startswith('subtitle_') else 'Estimating download time…')
 
     def selected_path(self):
+        if hasattr(self,'project_session'):
+            if self.project_session.preparing:return None
+            if self.project_session.path and self.workspaces.currentIndex()!=3:return self.project_session.path
+            if self.editor.doc['clips'] and self.workspaces.currentIndex()!=3:return None
         row = self.queue.currentRow()
         return self.queue_paths[row] if 0 <= row < len(self.queue_paths) else None
     def update_controls(self):
         busy = self.process is not None
-        self.analyze_btn.setEnabled(not busy and self.selected_path() is not None)
+        self.analyze_btn.setEnabled(not busy and (self.selected_path() is not None or bool(self.editor.doc['clips'])))
+        self.analyze_btn.setText('Prepare project' if self.editor.doc['clips'] and not self.project_session.path else 'Analyze project' if self.editor.doc['clips'] else 'Analyze video')
         self.queue_btn.setEnabled(not busy and bool(self.queue_paths))
         self.settings_btn.setEnabled(not busy)
         self.runtime_button.setEnabled(not busy)
@@ -1317,10 +1389,13 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setVisible(busy)
         self.subtitles.set_busy(busy)
         self.enhance.set_busy(busy)
+        self.editor.set_busy(busy)
         self.scissors.setEnabled(not busy and self.state is not None and self.mark_start is None)
         self.mark_panel.setEnabled(not busy)
         self.sync_menu_actions()
     def add_dialog(self):
+        if self.workspaces.currentIndex()==3:
+            self.editor.import_media(); return
         paths, _ = QFileDialog.getOpenFileNames(self, 'Choose videos', '', 'Videos (*.mp4 *.mkv *.mov *.avi *.webm *.m4v)')
         self.add_paths(paths)
     def add_paths(self, paths):
@@ -1398,8 +1473,11 @@ class MainWindow(QMainWindow):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
     def dropEvent(self, event):
-        self.add_paths([url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()])
+        paths=[url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        if self.workspaces.currentIndex()==3:self.editor.import_media(paths)
+        else:self.add_paths(paths)
     def select_video(self, row):
+        self.project_session.leave()
         if not self.subtitles.commit_edit():
             self.queue.blockSignals(True)
             if self.subtitles.video_path in self.queue_paths:
@@ -1475,6 +1553,7 @@ class MainWindow(QMainWindow):
                 return False
             self.reviews[self.state['video']] = (self.state, self.state_path)
         self.refresh_regions()
+        self.project_session.sync_censors(self.state)
         self.update_controls()
         return True
     def add_region(self):
@@ -1538,8 +1617,11 @@ class MainWindow(QMainWindow):
         self.timeline.duration = duration / 1000
         self.timeline.set_view(1, 0)
     def analyze_selected(self):
+        if self.editor.doc['clips'] and not self.project_session.path:
+            self.project_session.prepare();return
         if self.selected_path():
-            self.start_job({'action': 'analyze', 'video': self.selected_path(), 'config': self.config})
+            self.start_job({'action': 'analyze', 'video': self.selected_path(), 'config': self.config,
+                'preserved_events':[e for e in self.state.get('events',[]) if e.get('kind')=='manual'] if self.state and self.project_session.matches(self.state['video']) else []})
     def analyze_queue(self):
         self.pending = list(self.queue_paths)
         self.next_in_queue()
@@ -1552,6 +1634,8 @@ class MainWindow(QMainWindow):
         if not self.state or not self.save_review():
             return
         config = dict(self.config, censor_mode=self.mode.currentData())
+        if self.project_session.matches(self.state['video']):
+            self.editor.export();return
         self.start_job({'action': 'render', 'video': self.state['video'], 'config': config, 'state': self.state})
     def setup_runtime(self):
         from setup_wizard import SetupWizard
@@ -1575,6 +1659,7 @@ class MainWindow(QMainWindow):
     def start_job(self, job):
         if self.process:
             return
+        if hasattr(self,'project_session'):job=self.project_session.project_export_job(job)
         if job['action'] == 'subtitle_export':
             job['partial_token'] = uuid4().hex
         local_path = ROOT / 'runtime.local.json'
@@ -1620,13 +1705,17 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.job_started = time.monotonic()
         duration = job.get('state', {}).get('duration', (self.subtitles.player.duration() if job['action'].startswith('subtitle_') else self.player.duration()) / 1000)
+        if job['action'] in ('editor_export','editor_materialize'):
+            from editor_project import duration as edit_duration
+            duration=edit_duration(job['project'])
         self.set_time_estimate(duration)
+        self.editor.player.pause()
         self.subtitles.player.pause()
         self.refresh_elapsed()
         self.player.pause()
         self.enhance.pause()
         self.progress.setFormat("%p% · estimated" if job["action"] == "analyze" else "%p%")
-        self.hardware.setText({"probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading", "subtitle_transcribe": "Transcribing", "subtitle_translate": "Translating", "subtitle_smart": "Refining", "subtitle_waveform": "Reading audio", "subtitle_export": "Exporting", "enhance_install": "Downloading", "enhance_preview": "Enhancing", "enhance_export": "Enhancing"}[job["action"]])
+        self.hardware.setText({"editor_materialize": "Preparing project", "editor_import": "Reading media", "editor_export": "Exporting edit", "probe": "Getting ready…", "analyze": "Analyzing", "render": "Exporting", "preview": "Preparing preview", "download": "Downloading", "subtitle_transcribe": "Transcribing", "subtitle_translate": "Translating", "subtitle_smart": "Refining", "subtitle_waveform": "Reading audio", "subtitle_export": "Exporting", "enhance_install": "Downloading", "enhance_preview": "Enhancing", "enhance_export": "Enhancing"}[job["action"]])
         self.set_status('Checking graphics…' if job['action'] == 'probe' else 'Starting…')
         self.update_controls()
         process.start()
@@ -1647,7 +1736,12 @@ class MainWindow(QMainWindow):
                     self.worker_error = f'Unexpected processing response: {exc}'
     def message(self, data):
         kind = data['type']
-        if kind.startswith('enhance_'):
+        if kind.startswith('editor_'):
+            if not self.cancelled:
+                if kind=='editor_materialized':self.project_session.materialized(data)
+                else:self.editor.receive(data)
+                self.received_result = True
+        elif kind.startswith('enhance_'):
             if not self.cancelled:
                 self.enhance.receive(data)
                 self.received_result = True
@@ -1694,10 +1788,11 @@ class MainWindow(QMainWindow):
             self.hardware.setText('Ready')
             self.hardware.setToolTip('Choose your graphics card in Settings.')
             self.received_result = True
-            self.set_status('Ready. Choose acceleration in Settings, then add a video.')
+            self.set_status('Ready. Import media to begin your edit.')
         elif kind == 'review':
             self.invalidate_preview()
             self.state, self.state_path = data['state'], data['state_path']
+            self.project_session.sync_censors(self.state)
             self.reviews[self.state['video']] = (self.state, self.state_path)
             self.received_result = True
             self.refresh_regions()
@@ -1720,6 +1815,7 @@ class MainWindow(QMainWindow):
         self.log.close()
         self.process.deleteLater()
         self.process = None
+        self.project_session.preparing=False
         self.job_path.unlink(missing_ok=True)
         if self.job.get('action') in ('enhance_preview','enhance_export'):
             import shutil
@@ -1734,7 +1830,7 @@ class MainWindow(QMainWindow):
                         shutil.rmtree(folder)
                 except OSError:
                     pass
-        if self.job.get('action') == 'subtitle_export' and re.fullmatch(r'[0-9a-f]{32}', self.job.get('partial_token', '')):
+        if self.job.get('action') in ('subtitle_export','editor_export','editor_materialize') and re.fullmatch(r'[0-9a-f]{32}', self.job.get('partial_token', '')):
             target = Path(self.job['output']).resolve()
             partial = target.with_name(target.stem + '.' + self.job['partial_token'] + '.partial' + target.suffix)
             try:
@@ -1783,12 +1879,14 @@ class MainWindow(QMainWindow):
             self.cancel()
             self.process.waitForFinished(5000)
         if self.appearance_dialog is not None: self.appearance_dialog.reject()
+        if getattr(self, 'help_dialog', None) is not None: self.help_dialog.close()
         self.waveform.close()
         self.subtitles.commit_edit()
         self.subtitles.autosave()
         self.subtitles.deactivate_preview()
         self.subtitles.player.setVideoOutput(None)
         self.enhance.shutdown()
+        self.editor.shutdown()
         self.player.stop()
         self.player.setSource(QUrl())
         self.player.setVideoOutput(None)
@@ -1817,11 +1915,30 @@ def main():
     app.setWindowIcon(QIcon(str(ROOT / 'assets' / 'orange.ico')))
     if sys.platform == 'win32':
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('JuicyCensor.Desktop.3')
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('JuicyStudio.Desktop.1')
     app.setStyle('Fusion')
     app.setStyleSheet(STYLE)
     from bootstrap import ready
     from setup_wizard import SetupWizard
+    if '--check-guide-ui' in sys.argv:
+        from help_ui import HelpDialog
+        from PySide6.QtGui import QImage, QTextDocument
+        apply_theme(app,STYLE,load_preferences(ROOT/'appearance.json')['settings'])
+        dialog=HelpDialog(None,ROOT);dialog.show();dialog.topics.setCurrentRow(3)
+        def check_guide():
+            try:
+                text=dialog.browser.toPlainText()
+                assert 'One project, four workspaces' in text
+                images=re.findall(r'!\[[^\]]*\]\(([^)]+)\)',(ROOT/'README.md').read_text(encoding='utf-8'))
+                for path in images:
+                    loaded=dialog.browser.loadResource(QTextDocument.ResourceType.ImageResource,QUrl(path))
+                    assert isinstance(loaded,QImage) and not loaded.isNull(),path
+                write_json(ROOT/'logs/guide-check.json',{'success':True,'version':VERSION,'images':len(images),'text_characters':len(text)})
+                dialog.grab().save(str(ROOT/'logs/guide-check.png'));app.exit(0)
+            except Exception as exc:
+                write_json(ROOT/'logs/guide-check.json',{'success':False,'version':VERSION,'error':str(exc)});app.exit(1)
+        QTimer.singleShot(500,check_guide)
+        return app.exec()
     if '--check-setup-ui' in sys.argv:
         dialog = SetupWizard(ROOT)
         dialog.show()

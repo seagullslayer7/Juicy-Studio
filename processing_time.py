@@ -10,7 +10,7 @@ def initial_budget(action, duration, config, backend):
         budget = initial_budget('analyze', duration, config, backend)
         budget.pop('align', None); budget.pop('align_load', None)
         return budget
-    if action == 'subtitle_export':
+    if action in ('subtitle_export', 'editor_export', 'editor_materialize'):
         return initial_budget('render', duration, dict(config, export_encoder='libx264'), backend)
     if action == 'subtitle_waveform': return {'prepare': max(3., duration*.02), 'finish': 1.}
     if action == 'analyze':

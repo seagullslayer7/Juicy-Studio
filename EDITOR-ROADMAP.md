@@ -1,11 +1,40 @@
-# Toward a focused video editor
+# Juicy Studio video editor roadmap
 
 Direction: one editing project that combines cuts, censor regions, subtitles,
 translation, and enhancement. **Juicy Studio** is the selected product name,
 retaining the orange identity. Existing projects and the published JuicyCensor
 3.0 release remain supported.
 
-## First: finish Enhance
+## Editor foundation: included in Juicy Studio 1.0
+
+Edit is now the primary workspace. A versioned `.juicy` project references a
+media bin and a continuous video/audio timeline. The first implementation adds
+trim by dragging edges or entering source times, split, reorder, ripple removal,
+undo/redo, autosave and recovery, relinking, speed, volume, basic color controls,
+and MP4/MKV export with H.264, HEVC, or AV1 and hardware/CPU encoder selection.
+
+Source subtitles and censor regions attach to media, and one central mapping
+handles their timing through cuts and speed changes. Attached subtitle text is
+visible in the editor preview and can be burned on export; attached censor
+regions can be muted on export. The existing dialogue and enhancement workspaces
+remain available. See [editing workflow and limits](EDITOR-DEVELOPMENT.md).
+
+## Next: multiple tracks and responsive editing
+
+1. Add independent video and audio tracks, clip gaps, drag positioning, track
+   mute/solo/lock, and snapping. Extend the project/render model first so preview
+   and export agree about compositing and timing.
+2. Add titles, overlays, opacity, transforms, fades, and a small set of useful
+   transitions. Keyframes should share one interpolation model with export.
+3. Build proxy media and short render caching for responsive playback and live
+   color/effect previews. Include a clear comparison against the source.
+4. Add audio mixing, fades, peak meters, volume envelopes, and multiple source
+   audio-track selection. Test cuts and speed changes for sync and boundary clicks.
+5. Integrate enhancement as a clip effect in the editing project, with reusable
+   frame caches and one final encode. Finish HDR/color-management support before
+   allowing HDR export.
+
+## Continue validating Enhance
 
 The 3.1 prototype establishes local AI upscaling and preview comparison. Before
 calling it a stable release, validate the desktop launch/build, longer clips,
@@ -14,9 +43,9 @@ preview controls and long-video performance. Target-resolution choices are now
 implemented. Keep unsupported HDR workflows
 explicit instead of silently degrading their color or dynamic range.
 
-## Next: shared projects and basic editing
+## Shared-project design requirements
 
-Build the project data model before adding more independent workspace features.
+Extend the project data model before adding more independent workspace features.
 A project should reference original media and store edits separately:
 
 - A media bin shared by every workspace, with clear missing-file relinking.
@@ -50,7 +79,7 @@ Keep speech and enhancement models optional and local by default. Preserve the
 option to use an online translation provider with a user-supplied key.
 
 Selected name: **Juicy Studio**. Name/domain/trademark availability has not been
-researched. The development UI uses the new name; legacy package filenames and
-installer identity remain in place until the upgrade migration is tested. A rename
-must also account for installer upgrade identity, project associations, settings
-paths, and GitHub links; changing a title alone is not a complete migration.
+researched. Juicy Studio 1.0 uses the new name. Its installer preserves the Studio preview
+identity and updates its branding; JuicyCensor remains a separate installation.
+Existing JuicyCensor downloads and release history remain available. Projects
+reference their original media, so retain those files when moving installations.

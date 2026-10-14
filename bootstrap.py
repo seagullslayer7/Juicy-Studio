@@ -157,6 +157,16 @@ class Installer:
             self.command([python, '-I', '-c', probe])
         return python
 
+    def prepare_environment(self, python):
+        # uv venv rewrites even an explicitly versioned managed interpreter to
+        # its minor-version junction (cpython-3.12-...). That junction may be
+        # rejected with Windows error 448 during first-run setup. CPython's
+        # own venv records the concrete home and copies its Windows launchers.
+        # Re-running this repairs an earlier broken home without clearing
+        # downloaded packages or an existing environment's site-packages.
+        self.command([python, '-I', '-m', 'venv', '--copies', '--without-pip', self.root / 'venv'])
+        return self.root / 'venv/Scripts/python.exe'
+
     def install(self, profile='cpu', models=True):
         if profile not in ('cpu', 'cuda'):
             raise ValueError('Unknown runtime profile')
@@ -171,9 +181,7 @@ class Installer:
                 raise RuntimeError('Bundled installer helper checksum mismatch')
         self.progress('Installing private Python ' + manifest['python'])
         python = self.install_private_python(uv, manifest['python'])
-        if not (root / 'venv/Scripts/python.exe').exists():
-            self.command([uv, 'venv', root / 'venv', '--python', python, '--relocatable'])
-        python = root / 'venv/Scripts/python.exe'
+        python = self.prepare_environment(python)
         self.progress('Installing verified processing packages. This can take several minutes.')
         index = 'cu128' if profile == 'cuda' else 'cpu'
         self.command([uv, 'pip', 'sync', root / f'requirements-{profile}.lock', '--python', python,
@@ -189,4 +197,4 @@ class Installer:
         temporary = marker.with_suffix('.tmp')
         temporary.write_text(json.dumps({'version': VERSION, 'profile': profile, 'models': models}, indent=2))
         temporary.replace(marker)
-        self.progress('Setup complete. JuicyCensor is ready.')
+        self.progress('Setup complete. Juicy Studio is ready.')
