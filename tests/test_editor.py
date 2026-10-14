@@ -1,6 +1,8 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import copy
 import tempfile
-from pathlib import Path
 import unittest
 import editor_project as editor
 from editor_worker import graph

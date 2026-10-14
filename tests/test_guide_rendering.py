@@ -1,9 +1,11 @@
 """Prevent invisible dark-theme README text and missing bundled SVG images."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import tempfile
 import unittest
-from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QImage, QTextDocument
 from PySide6.QtWidgets import QApplication

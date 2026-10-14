@@ -1,4 +1,5 @@
 """Make project-local FFmpeg and CUDA runtime DLLs discoverable."""
+from app_paths import APP_ROOT
 import json
 import os
 import sys
@@ -23,7 +24,7 @@ def configure_model_cache():
 
 
 def configure_runtime():
-    root = Path(__file__).resolve().parent
+    root = APP_ROOT
     local_path = root / "runtime.local.json"
     local = json.loads(local_path.read_text(encoding="utf-8")) if local_path.exists() else {}
     for key, variable in (("torch_cache", "TORCH_HOME"), ("hf_cache", "HF_HOME"), ("nltk_data", "NLTK_DATA")):

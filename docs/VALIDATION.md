@@ -1,5 +1,19 @@
 # Juicy Studio 1.0.0 validation
 
+## Source organization check — October 13, 2026
+
+The repository now separates application modules (`src`), guides (`docs`), build
+scripts (`scripts`) and dependency locks (`requirements`). The automated suite
+passes all 138 tests after the move. Source Help topics, local guide navigation,
+the main window and distribution staging were checked. The Windows executable,
+installer and both ZIP distributions build successfully with the new paths.
+The actual windowed executable passes its packaged Help check (including all
+three README graphics) and setup-screen check. A subprocess media-import job
+passes through the relocated worker. Both ZIPs pass integrity and private-data
+exclusion checks. One initial packaged launch timed out; the diagnostic build
+and repeat of the actual packaged executable both completed successfully.
+This maintenance change does not replace the published 1.0.0 downloads.
+
 Release checks on Windows x64, October 13, 2026.
 
 - **138 automated tests passed**, covering processing and export behavior, project time mapping, history, model/cache integrity, setup recovery, audio reconnection, track assignment/removal, cleanup boundaries and dark-theme guide rendering.

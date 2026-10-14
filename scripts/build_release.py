@@ -8,18 +8,72 @@ import subprocess
 import sys
 import zipfile
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 VERSION = json.loads((ROOT/'release-manifest.json').read_text(encoding='utf-8'))['version']
-PAYLOAD_FILES = ['playback_controls.py', 'help_ui.py', 'maintenance_ui.py', 'storage_cleanup.py', 'project_session.py', 'project_browser.py', 'project_library.py', 'editor_project.py', 'editor_ui.py', 'editor_worker.py', 'JuicyCensorApp.py', 'autocensor.py', 'worker.py', 'transcription.py', 'enhance_ui.py', 'enhance_worker.py', 'enhance_resolution.py', 'enhance_quality.py', 'enhance_cuda.py', 'enhance_networks.py', 'enhance_people.py', 'enhance_face_network.py', 'enhance_texture.py', 'enhance_framerate.py', 'enhance_swinir_network.py', 'video_encoding.py',
-    'processing_time.py', 'appearance.py', 'audio_timeline.py', 'audio_waveform.py', 'ui_icons.py', 'languages.py', 'subtitle_document.py', 'subtitle_worker.py', 'subtitle_encoding.py', 'subtitle_ui.py', 'translation.py', 'runtime_paths.py', 'bootstrap.py', 'setup_wizard.py', 'setup_verify.py',
-    'install_runtime.py', 'model_download.py', 'config.json', 'banned_words.txt',
-    'banned_phrases.txt', 'beep.mp3', 'release-manifest.json', 'requirements-cpu.lock',
-    'requirements-cuda.lock', 'LICENSE', 'README.md', 'THIRD-PARTY.md', 'VALIDATION.md',
-    'BUILDING.md', 'RELEASE-NOTES.md', 'ENHANCE-DEVELOPMENT.md', 'EDITOR-ROADMAP.md', 'EDITOR-DEVELOPMENT.md']
-PAYLOAD_DIRS = ['assets', 'licenses', 'vendor_wheels', 'bootstrap-tools']
-SOURCE_EXTRA = ['JuicyCensor.spec', 'build_release.py', 'requirements-ui.txt',
-    'requirements-dev.txt', 'requirements-runtime.in', 'requirements-cpu.in',
-    'requirements-cuda.in', '.gitignore']
+PAYLOAD_FILES = [
+    'config.json',
+    'banned_words.txt',
+    'banned_phrases.txt',
+    'beep.mp3',
+    'release-manifest.json',
+    'LICENSE',
+    'README.md',
+    'THIRD-PARTY.md',
+    'RELEASE-NOTES.md',
+    'JuicyStudio.py',
+    'src/JuicyCensorApp.py',
+    'src/appearance.py',
+    'src/audio_timeline.py',
+    'src/audio_waveform.py',
+    'src/autocensor.py',
+    'src/bootstrap.py',
+    'src/editor_project.py',
+    'src/editor_ui.py',
+    'src/editor_worker.py',
+    'src/enhance_cuda.py',
+    'src/enhance_face_network.py',
+    'src/enhance_framerate.py',
+    'src/enhance_networks.py',
+    'src/enhance_people.py',
+    'src/enhance_quality.py',
+    'src/enhance_resolution.py',
+    'src/enhance_swinir_network.py',
+    'src/enhance_texture.py',
+    'src/enhance_ui.py',
+    'src/enhance_worker.py',
+    'src/help_ui.py',
+    'src/install_runtime.py',
+    'src/languages.py',
+    'src/maintenance_ui.py',
+    'src/model_download.py',
+    'src/playback_controls.py',
+    'src/processing_time.py',
+    'src/project_browser.py',
+    'src/project_library.py',
+    'src/project_session.py',
+    'src/runtime_paths.py',
+    'src/setup_verify.py',
+    'src/setup_wizard.py',
+    'src/storage_cleanup.py',
+    'src/subtitle_document.py',
+    'src/subtitle_encoding.py',
+    'src/subtitle_ui.py',
+    'src/subtitle_worker.py',
+    'src/transcription.py',
+    'src/translation.py',
+    'src/ui_icons.py',
+    'src/video_encoding.py',
+    'src/worker.py',
+    'src/app_paths.py',
+]
+PAYLOAD_DIRS = ['assets', 'licenses', 'vendor_wheels', 'bootstrap-tools', 'docs', 'requirements']
+SOURCE_EXTRA = ['scripts/JuicyStudio.spec', 'scripts/build_release.py', '.gitignore']
+
+def copy_files(names, destination):
+    for name in names:
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, target)
 
 
 def zip_folder(folder, output, prefix):
@@ -40,14 +94,13 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     compiled = args.compiled
     if not compiled:
-        subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', str(ROOT/'JuicyCensor.spec')], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', str(ROOT/'scripts/JuicyStudio.spec')], cwd=ROOT, check=True)
         compiled = ROOT / 'dist/JuicyStudio'
     payload = output / f'JuicyStudio-{VERSION}-Windows-x64'
     if payload.exists():
         raise SystemExit('Use an empty release output folder to avoid carrying stale files into a release.')
     shutil.copytree(compiled, payload)
-    for name in PAYLOAD_FILES:
-        shutil.copy2(ROOT / name, payload / name)
+    copy_files(PAYLOAD_FILES, payload)
     for name in PAYLOAD_DIRS:
         shutil.copytree(ROOT / name, payload / name)
     # This allowlist intentionally excludes environments, models, caches, local
@@ -55,13 +108,12 @@ def main():
     zip_folder(payload, output/f'JuicyStudio-{VERSION}-Windows-x64-Portable.zip', payload.name)
     source = output / f'JuicyStudio-{VERSION}-Source'
     source.mkdir()
-    for name in PAYLOAD_FILES + SOURCE_EXTRA:
-        shutil.copy2(ROOT/name, source/name)
+    copy_files(PAYLOAD_FILES + SOURCE_EXTRA, source)
     for name in PAYLOAD_DIRS + ['installer', 'tests', '.github']:
         shutil.copytree(ROOT/name, source/name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     zip_folder(source, output/f'JuicyStudio-{VERSION}-Source.zip', source.name)
     subprocess.run([str(args.iscc.resolve()), f'/DProductVersion={VERSION}', f'/DPayloadDir={payload}', f'/DReleaseDir={output}',
-                    str(ROOT/'installer/JuicyCensor.iss')], check=True, cwd=ROOT)
+                    str(ROOT/'installer/JuicyStudio.iss')], check=True, cwd=ROOT)
     files = sorted([*output.glob('*.zip'), *output.glob('*Setup.exe')])
     lines = []
     for file in files:

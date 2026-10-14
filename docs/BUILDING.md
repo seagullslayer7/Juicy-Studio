@@ -1,12 +1,36 @@
 # Building Juicy Studio 1.0.0
 
+Run the commands below from the repository root.
+
+## Repository layout
+
+| Folder | Contents |
+| --- | --- |
+| `src/` | Application UI, editing, censoring, subtitles, enhancement and runtime setup |
+| `docs/` | Feature guides, development notes, validation and build instructions |
+| `scripts/` | Release builder and PyInstaller specification |
+| `requirements/` | Dependency inputs and verified CPU/CUDA locks |
+| `tests/` | Automated checks |
+| `assets/` | Orange branding and current README screenshots |
+| `installer/` | Windows installer definition |
+| `licenses/`, `vendor_wheels/` | Required third-party notices and vendored dependency |
+
+Launch the checkout with `python JuicyStudio.py`. Application data, settings,
+models and caches live at the repository/installation root, separate from `src/`.
+The packaged worker and setup verification scripts run from `src/` too.
+
+Run tests with `python -m unittest discover -s tests` using an environment that
+has both the UI and processing dependencies installed.
+
+## Build distributions
+
 Use Windows x64, Python 3.12.x for the frozen GUI, PyInstaller 6.21.0, PySide6 6.11.2,
 and Inno Setup 7.1.0. The private processing environment uses Python 3.12.14.
 
 ```powershell
 python -m venv build-env
-.\build-env\Scripts\python.exe -m pip install PyInstaller==6.21.0 -r requirements-ui.txt
-.\build-env\Scripts\python.exe build_release.py --iscc 'C:\path\to\ISCC.exe' --output release
+.\build-env\Scripts\python.exe -m pip install PyInstaller==6.21.0 -r requirements/requirements-ui.txt
+.\build-env\Scripts\python.exe scripts/build_release.py --iscc 'C:\path\to\ISCC.exe' --output release
 ```
 
 Use a fresh output directory each build. The builder creates Setup.exe, Portable.zip,
@@ -31,7 +55,7 @@ To update dependencies, regenerate both locks, verify the wheel hash and remove
 machine-specific paths from generated comments, then rerun setup and media tests.
 
 Never package runtime.local.json, venv, runtime, vendor, caches, personal videos,
-Git metadata or reports. build_release.py uses an explicit allowlist.
+Git metadata or reports. scripts/build_release.py uses an explicit allowlist.
 
 ## Publishing on GitHub
 

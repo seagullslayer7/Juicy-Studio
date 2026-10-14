@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 from uuid import uuid4
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'src'))
 import enhance_worker as e
 
 

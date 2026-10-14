@@ -4,7 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'src'))
 from subtitle_document import (new_document, cue, save_project, load_project, export_text,
     import_subtitles, validate_document, History, timestamp, quality_notes)
 from languages import validate_language_model

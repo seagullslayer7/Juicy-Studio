@@ -1,6 +1,8 @@
 """Exercise the real Hub cache when Windows denies symbolic-link privileges."""
-import os
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+import os
 import shutil
 import unittest
 from unittest.mock import patch

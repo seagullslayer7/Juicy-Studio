@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'src'))
 from test_enhance import scratch
 from subtitle_document import new_document, cue, export_text
 from subtitle_worker import prepare_export_subtitles

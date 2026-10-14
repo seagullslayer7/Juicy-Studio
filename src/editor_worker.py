@@ -113,8 +113,8 @@ def run_editor_job(job, emit):
     partial=output.with_name(output.stem+'.'+job['partial_token']+'.partial'+output.suffix)
     annotations=mapped_annotations(project,'subtitles') if (job.get('burn_subtitles') or job.get('soft_subtitles')) and not materialize else []
     config=dict(project.get('censor_settings',{'censor_mode':'mute'}))
-    from runtime_paths import __file__ as runtime_file
-    config['beep_path']=str(Path(runtime_file).parent/config.get('beep_file','beep.mp3'))
+    from app_paths import APP_ROOT
+    config['beep_path']=str(APP_ROOT/config.get('beep_file','beep.mp3'))
     has_subtitles=bool(annotations or job.get('subtitle_file')) and not materialize
     inputs, filters, video, audio=graph(project, has_subtitles and job.get('burn_subtitles',False), job.get('mute_censors',False) and not materialize,config)
     emit('estimate', duration=duration(project)); emit('stage', message='Preparing project playback' if materialize else 'Preparing timeline export',percent=0)

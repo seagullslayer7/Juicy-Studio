@@ -61,7 +61,7 @@ The optional starter model is multilingual **base**. Larger models such as **sma
 
 Juicy Studio 1.0 is an editing foundation. Video/audio lanes organize a linked sequence: overlapping layers, independent audio mixing, transitions and keyframes are not implemented yet. Clip color adjustments apply during rendering; the source preview shows original color. HDR timeline export is not supported.
 
-AI enhancement cannot guarantee new detail or correct anatomy and may introduce artifacts. Review a moving preview before a full export. Available restoration options differ by GPU/backend. See the [editing guide](EDITOR-DEVELOPMENT.md) and [enhancement guide](ENHANCE-DEVELOPMENT.md) for details.
+AI enhancement cannot guarantee new detail or correct anatomy and may introduce artifacts. Review a moving preview before a full export. Available restoration options differ by GPU/backend. See the [editing guide](docs/EDITOR-DEVELOPMENT.md) and [enhancement guide](docs/ENHANCE-DEVELOPMENT.md) for details.
 
 ## Updating and support
 
@@ -69,4 +69,4 @@ The Studio installer updates earlier **Juicy Studio previews** while retaining l
 
 For portable updates, close the app, back up its folder, then replace application files while preserving settings, projects and runtime/model folders. Downloading a ZIP alone does not update an installation.
 
-[Report an issue](https://github.com/seagullslayer7/JuicyCensor/issues) · [Build from source](BUILDING.md) · [Validation](VALIDATION.md) · [Licenses](THIRD-PARTY.md) · [Editor roadmap](EDITOR-ROADMAP.md)
+[Report an issue](https://github.com/seagullslayer7/JuicyCensor/issues) · [Build from source](docs/BUILDING.md) · [Validation](docs/VALIDATION.md) · [Licenses](THIRD-PARTY.md) · [Editor roadmap](docs/EDITOR-ROADMAP.md)

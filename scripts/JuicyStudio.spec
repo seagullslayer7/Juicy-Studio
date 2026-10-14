@@ -5,7 +5,7 @@ from PyInstaller.utils.win32.versioninfo import (
     VarFileInfo, VarStruct,
 )
 
-root = Path(SPECPATH)
+root = Path(SPECPATH).parent
 version = json.loads((root / 'release-manifest.json').read_text(encoding='utf-8'))['version']
 version_tuple = tuple(int(part) for part in version.split('-')[0].split('.')) + (0,)
 version_info = VSVersionInfo(
@@ -19,7 +19,7 @@ version_info = VSVersionInfo(
         StringStruct('OriginalFilename', 'JuicyStudio.exe'),
     ])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])],
 )
-a = Analysis([str(root / 'JuicyCensorApp.py')], pathex=[str(root / 'vendor')],
+a = Analysis([str(root / 'JuicyStudio.py')], pathex=[str(root / 'src'), str(root / 'vendor')],
              binaries=[], datas=[], hiddenimports=[], hookspath=[], runtime_hooks=[],
              # Processing libraries belong to the private worker environment,
              # never to the desktop executable (even when present on the builder).

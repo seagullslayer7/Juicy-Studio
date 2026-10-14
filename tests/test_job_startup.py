@@ -9,7 +9,7 @@ from unittest.mock import patch
 from uuid import uuid4
 import shutil
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'src'))
 try:
     import JuicyCensorApp as ui
 except ModuleNotFoundError as error:

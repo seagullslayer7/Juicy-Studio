@@ -4,6 +4,7 @@ Frames stream through small batches, bounding temporary storage independently of
 video length. Input is never modified; only a completed encode becomes output.
 """
 from __future__ import annotations
+from app_paths import APP_ROOT
 from contextlib import ExitStack, suppress
 from fractions import Fraction
 import hashlib
@@ -24,7 +25,7 @@ from enhance_resolution import TARGETS, output_size, model_scale
 from enhance_quality import color_pipeline, automatic_bitrate, preserve_chroma_array
 from enhance_framerate import frame_rates
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP_ROOT
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 URL = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip'
 SHA256 = 'abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d'

@@ -8,7 +8,8 @@ from pathlib import Path
 import sys
 from uuid import uuid4
 
-ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+from app_paths import APP_ROOT
+ROOT = APP_ROOT
 if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(ROOT / 'vendor'))
     _local_file = ROOT / 'runtime.local.json'
@@ -1696,7 +1697,7 @@ class MainWindow(QMainWindow):
             environment['JUICY_TRANSLATION_KEY'] = self.subtitles.api_key
         for key in ('PYTHONHOME', 'PYTHONPATH', 'TCL_LIBRARY', 'TK_LIBRARY', '_MEIPASS2'):
             environment.pop(key, None)
-        process = ProcessingThread([str(python), '-B', '-u', str(ROOT / 'worker.py'), str(path)], environment, self)
+        process = ProcessingThread([str(python), '-B', '-u', str(ROOT / 'src' / 'worker.py'), str(path)], environment, self)
         self.process = process
         process.output.connect(self.read_output)
         process.finished.connect(lambda: self.job_finished(process.exit_code, None))

@@ -1,4 +1,7 @@
 """Source fidelity and bounded texture recovery, without model downloads."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import unittest
 import numpy as np
 from PIL import Image

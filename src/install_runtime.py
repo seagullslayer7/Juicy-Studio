@@ -1,4 +1,5 @@
 """Install the pinned Windows inference runtime and the default Vulkan model."""
+from app_paths import APP_ROOT
 from pathlib import Path
 import hashlib
 import json
@@ -7,7 +8,7 @@ import urllib.request
 import zipfile
 from model_download import download_model
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP_ROOT
 VULKAN_URL = 'https://github.com/lemonade-sdk/whisper.cpp-builds/releases/download/v1.8.4/whisper-bin-x64-vulkan.zip'
 VULKAN_SHA = 'e31ca33a055162f49f1460edfb0c2134025816b6fb44a3a77854242df28e55f9'
 FFMPEG_URL = 'https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build-shared.zip'

@@ -1,5 +1,6 @@
 """Subtitle jobs run outside the GUI; cancellation uses the existing worker Job Object."""
 from __future__ import annotations
+from app_paths import APP_ROOT
 import array
 from contextlib import contextmanager
 import json
@@ -15,7 +16,7 @@ from uuid import uuid4
 from subtitle_document import cue, new_document, validate_document, export_text, import_subtitles
 from languages import validate_language_model
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP_ROOT
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 

@@ -1,11 +1,12 @@
 """Executed by the private interpreter, never by the frozen GUI interpreter."""
+from app_paths import APP_ROOT
 from pathlib import Path
 import subprocess
 import sys
 from runtime_paths import configure_runtime
 
 configure_runtime()
-root = Path(__file__).resolve().parent
+root = APP_ROOT
 import torch
 import torchaudio
 import whisperx

@@ -184,7 +184,7 @@ class Installer:
         python = self.prepare_environment(python)
         self.progress('Installing verified processing packages. This can take several minutes.')
         index = 'cu128' if profile == 'cuda' else 'cpu'
-        self.command([uv, 'pip', 'sync', root / f'requirements-{profile}.lock', '--python', python,
+        self.command([uv, 'pip', 'sync', root / 'requirements' / f'requirements-{profile}.lock', '--python', python,
                       '--require-hashes', '--only-binary', ':all:', '--find-links', root / 'vendor_wheels',
                       '--extra-index-url', f'https://download.pytorch.org/whl/{index}',
                       '--index-strategy', 'unsafe-best-match'])
@@ -192,7 +192,7 @@ class Installer:
         self.archive(FFMPEG_URL, FFMPEG_SHA, 'ffmpeg-shared.zip', root / 'tools/ffmpeg-shared', True)
         self.archive(VULKAN_URL, VULKAN_SHA, 'whisper-vulkan.zip', root / 'tools/whisper-vulkan')
         self.progress('Checking the new processing environment…')
-        self.command([python, '-B', root / 'setup_verify.py', *(['--models'] if models else [])])
+        self.command([python, '-B', root / 'src' / 'setup_verify.py', *(['--models'] if models else [])])
         self.check_cancel()
         temporary = marker.with_suffix('.tmp')
         temporary.write_text(json.dumps({'version': VERSION, 'profile': profile, 'models': models}, indent=2))

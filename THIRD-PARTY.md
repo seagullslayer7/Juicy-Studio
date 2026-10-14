@@ -35,8 +35,8 @@ the licenses of its dependencies.
 - whisper.cpp Vulkan 1.8.4 distributed by Lemonade SDK (MIT components):
   https://github.com/lemonade-sdk/whisper.cpp-builds/releases/tag/v1.8.4
   https://github.com/ggml-org/whisper.cpp/tree/v1.8.4
-- Python packages: exact versions and archive hashes are in requirements-cpu.lock
-  and requirements-cuda.lock. Installed package licenses are retained in the private
+- Python packages: exact versions and archive hashes are in requirements/requirements-cpu.lock
+  and requirements/requirements-cuda.lock. Installed package licenses are retained in the private
   environment's dist-info directories. Includes PyTorch, WhisperX, faster-whisper,
   CTranslate2, Hugging Face libraries and their dependencies.
 - Models/tokenizer data download from their publishers. See

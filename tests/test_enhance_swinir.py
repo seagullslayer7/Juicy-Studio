@@ -1,11 +1,13 @@
 """Optional SwinIR selection, package contents, and inference boundary handling."""
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import unittest
 import torch
 from enhance_swinir_network import SwinIR
 from enhance_cuda import model_choice, WEIGHTS
 from enhance_worker import validate_settings
-from build_release import PAYLOAD_FILES
+from scripts.build_release import PAYLOAD_FILES
 
 
 class SwinIRTests(unittest.TestCase):
@@ -17,7 +19,7 @@ class SwinIRTests(unittest.TestCase):
             self.assertTrue(url.startswith('https://github.com/JingyunLiang/SwinIR/releases/'))
             self.assertGreater(size,140_000_000);self.assertEqual(len(digest),64)
             validate_settings(dict(model='live',restoration=profile))
-        self.assertIn('enhance_swinir_network.py',PAYLOAD_FILES)
+        self.assertIn('src/enhance_swinir_network.py',PAYLOAD_FILES)
         self.assertTrue((Path(__file__).resolve().parents[1]/'licenses/SwinIR-LICENSE.txt').is_file())
 
     def test_odd_and_tiny_shapes_produce_finite_exact_fourfold_output(self):

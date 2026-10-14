@@ -13,6 +13,7 @@ Censor modes:
 """
 
 from __future__ import annotations
+from app_paths import APP_ROOT
 
 import argparse
 import gc
@@ -34,7 +35,7 @@ from runtime_paths import configure_runtime
 configure_runtime()
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = APP_ROOT
 
 
 @dataclass

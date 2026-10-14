@@ -16,7 +16,7 @@ jobs:
           # independently pinned and installed by uv from release-manifest.json.
           python-version: '3.12'
       - name: Install GUI build dependencies
-        run: python -m pip install PyInstaller==6.21.0 -r requirements-ui.txt
+        run: python -m pip install PyInstaller==6.21.0 -r requirements/requirements-ui.txt
       - name: Fetch verified build helpers
         shell: python
         run: |
@@ -34,7 +34,7 @@ jobs:
           assert hashlib.sha256(pathlib.Path('inno.exe').read_bytes()).hexdigest() == '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
           subprocess.run([str(root/'inno.exe'), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/PORTABLE=1', '/NOICONS', '/DIR='+str(root/'inno')], check=True)
       - name: Build distributions
-        run: python build_release.py --iscc inno/ISCC.exe --output release
+        run: python scripts/build_release.py --iscc inno/ISCC.exe --output release
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: JuicyStudio-Windows-release

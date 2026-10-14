@@ -46,8 +46,8 @@ and independent audio mixing are still planned. The Editing guide explains the
 current features and limits.
 '''
 
-TOPICS = [('Getting started', None), ('Editing & projects', 'EDITOR-DEVELOPMENT.md'),
-          ('Enhancement', 'ENHANCE-DEVELOPMENT.md'), ('Full README', 'README.md'),
+TOPICS = [('Getting started', None), ('Editing & projects', 'docs/EDITOR-DEVELOPMENT.md'),
+          ('Enhancement', 'docs/ENHANCE-DEVELOPMENT.md'), ('Full README', 'README.md'),
           ('Release notes', 'RELEASE-NOTES.md'), ('Third-party software', 'THIRD-PARTY.md')]
 
 
@@ -102,6 +102,8 @@ class HelpDialog(QDialog):
         filename = TOPICS[index][1]
         try: text = (self.root / filename).read_text(encoding='utf-8') if filename else WELCOME
         except OSError: text = '# Guide unavailable\n\nThis guide was not included in this installation.'
+        page = self.root / filename if filename else self.root / 'README.md'
+        self.browser.document().setBaseUrl(QUrl.fromLocalFile(str(page.parent) + '/'))
         self.browser.setMarkdown(text)
         # Markdown/HTML fragments can retain black text despite a dark palette.
         # Give every fragment an explicit foreground, then style headings/links.

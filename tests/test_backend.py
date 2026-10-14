@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from transcription import parse_cpp_result, select_backend, select_device, cache_signature
 from worker import validate_events
 

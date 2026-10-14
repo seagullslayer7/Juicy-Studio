@@ -1,5 +1,6 @@
 """WhisperX CUDA/CPU and whisper.cpp Vulkan with CPU forced alignment."""
 from __future__ import annotations
+from app_paths import APP_ROOT
 import gc
 import hashlib
 import json
@@ -9,7 +10,7 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP_ROOT
 LOCAL = json.loads((ROOT / 'runtime.local.json').read_text(encoding='utf-8')) if (ROOT / 'runtime.local.json').exists() else {}
 CLI = Path(LOCAL.get('whisper_cli', str(ROOT / 'tools' / 'whisper-vulkan' / 'Release' / 'whisper-cli.exe')))
 MODEL_DIR = Path(LOCAL.get('models_dir', str(ROOT / 'models')))

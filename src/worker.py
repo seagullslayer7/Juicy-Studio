@@ -1,5 +1,6 @@
 """Isolated processing process; @@ lines are structured UI messages."""
 from __future__ import annotations
+from app_paths import APP_ROOT
 import ctypes
 import hashlib
 import json
@@ -11,7 +12,7 @@ import traceback
 from dataclasses import asdict
 from uuid import UUID, uuid4
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP_ROOT
 _job_handle = None
 
 

@@ -38,7 +38,7 @@ JuicyCensor becomes **Juicy Studio**, bringing editing, censorship, multilingual
 
 Use **Setup.exe** to install, **Portable.zip** for a complete portable app, or **Source.zip** to build it yourself. SHA256SUMS.txt covers all three. First launch downloads the selected processing environment; models require additional space. Windows 10 (1809+) / Windows 11 x64; unsigned installer.
 
-The release is checked with the automated suite, synthetic playback/export, shared-project timing, switchable MKV subtitles, cleanup boundaries, resizing and packaged UI checks. See VALIDATION.md for exact checks.
+The release is checked with the automated suite, synthetic playback/export, shared-project timing, switchable MKV subtitles, cleanup boundaries, resizing and packaged UI checks. See [validation](docs/VALIDATION.md) for exact checks.
 
 No layered compositing, independent audio mixing, transitions or keyframes yet. HDR timeline export is unsupported. Clip color edits render at export; the source preview shows original color. Smart translation suggestions need review; optional online AI uses the user's own key.
 
@@ -101,7 +101,7 @@ Close the app and install into the existing installation folder. Settings, word 
 
 Local text-model servers are a separate optional installation. Online translation requires your own compatible service and may incur charges. Review automated transcription/translation before exporting. Censor transcripts and subtitle projects are separate. ASS import retains text/timing, not complex styles or effects. MP4 subtitles are permanent; MKV subtitles can be switched off in a compatible player.
 
-Windows 10 (1809+) / Windows 11 x64. The application is unsigned. See VALIDATION.md for test coverage and limits.
+Windows 10 (1809+) / Windows 11 x64. The application is unsigned. See [validation](docs/VALIDATION.md) for test coverage and limits.
 
 <details>
 <summary><strong>Earlier release changes included in 3.0</strong></summary>
